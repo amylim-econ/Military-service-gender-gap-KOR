@@ -22,11 +22,10 @@ The analysis uses nationally representative microdata (restricted).
 Due to data confidentiality, raw data are not included.
 
 ## Code Structure
-- `01_clean.do`: Data cleaning
-- `02_construct_entry_age.do`: Labor market entry age construction
-- `03_event_study_entry.do`: Event study on entry age
-- `04_event_study_wage.do`: Wage event study
-- `05_job_quality_index.do`: Job quality index construction
+- `00_globals.do`: Global root
+- `01_clean_all.do`: Data cleaning for each year
+- `02_append.do`: Append cleaned data from 2000-2025
+- `03_analysis.do`: Event Study and main Diff-in-Diff regression
 
 ## Status
 This project is ongoing and results are preliminary.
