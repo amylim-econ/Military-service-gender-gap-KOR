@@ -34,6 +34,31 @@ forvalues y = 2001/2025 {
     }
 }
 
+****************************************************
+* Safety checks for harmonised industry mapping
+****************************************************
+tab industry_revision, missing
+tab industry_code, missing
+tab industry_revision industry_code, missing
+assert missing(industry_code) == missing(industry_code_raw)
+
+****************************************************
+* Boundary-year diagnostic for industry composition
+* Shares are among observations with nonmissing industry.
+****************************************************
+preserve
+	keep if !missing(industry_code)
+	contract year industry_code
+	bysort year: egen industry_total = total(_freq)
+	gen industry_share = 100 * _freq / industry_total
+	format industry_share %6.2f
+
+	display as text "Industry shares around KSIC revision boundaries"
+	list year industry_code industry_share ///
+		if inlist(year, 2003, 2004, 2012, 2013, 2024, 2025), ///
+		sepby(year) noobs
+restore
+
 save "$CLEAN/mdis_master_2001_2025.dta", replace
 
 **Check after appending

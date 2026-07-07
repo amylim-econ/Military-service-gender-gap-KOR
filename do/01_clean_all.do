@@ -187,7 +187,9 @@ program define set_source_map
 		local contract_work v41
 	}
 	
-***산업/직업 n차개정 뭐로 할지 정해야함 - 현재 최신 기준
+*** 산업분류 harmonisation source rule:
+*** 2001-2003 = KSIC 8th; 2004-2012 = 9th;
+*** 2013-2024 = 10th; 2025 = 11th.
 **유급휴가 추가
 	if `y'== 2004 {
 		local survey_ym		v1
@@ -507,7 +509,7 @@ program define set_source_map
         local activity_status v12
         local worked_lastweek v11
 		local prev_work		 v43
-        local industry_code  v54
+        local industry_code  v52
         local occupation_code v55
         local worker_status  v31
         local firm_size      v27
@@ -542,7 +544,7 @@ program define set_source_map
         local activity_status v12
         local worked_lastweek v11
 		local prev_work		 v43
-        local industry_code  v54
+        local industry_code  v52
         local occupation_code v55
         local worker_status  v31
         local firm_size      v27
@@ -577,7 +579,7 @@ program define set_source_map
         local activity_status v12
         local worked_lastweek v11
 		local prev_work		 v44
-        local industry_code  v59
+        local industry_code  v57
         local occupation_code v60
         local worker_status  v33
         local firm_size      v29
@@ -611,7 +613,7 @@ if `y'== 2016 {
         local activity_status v45
         local worked_lastweek v11
 		local prev_work		 v46
-        local industry_code  v61
+        local industry_code  v26
         local occupation_code v62
         local worker_status  v30
         local firm_size      v27
@@ -646,7 +648,7 @@ if `y'== 2016 {
         local activity_status v45
         local worked_lastweek v11
 		local prev_work		 v46
-        local industry_code  v61
+        local industry_code  v26
         local occupation_code v62
         local worker_status  v30
         local firm_size      v27
@@ -680,7 +682,7 @@ if `y'== 2016 {
         local activity_status v43
         local worked_lastweek v11
 		local prev_work		 v44
-        local industry_code  v57
+        local industry_code  v25
         local occupation_code v58
         local worker_status  v28
         local firm_size      v26
@@ -805,6 +807,103 @@ if `y'== 2016 {
 end
 
 
+****************************************************
+* Build crosswalk for harmonised industry groups
+****************************************************
+capture program drop build_industry_crosswalk
+program define build_industry_crosswalk
+	tempfile industry_crosswalk
+	tempname handle
+	postfile `handle' byte industry_revision str1 industry_code_raw ///
+	    byte industry_code str60 industry_name using `industry_crosswalk', replace
+
+	* KSIC 8th revision mappings.
+	* Industry codes A and B are combined into group 1.
+	* Industry codes L and M are combined into group 11.
+	* Industry codes Q, R, S and T are combined into group 15.
+	post `handle' (8) ("A") (1)  ("Agriculture, forestry and fishing")
+	post `handle' (8) ("B") (1)  ("Agriculture, forestry and fishing")
+	post `handle' (8) ("C") (2)  ("Mining")
+	post `handle' (8) ("D") (3)  ("Manufacturing")
+	post `handle' (8) ("E") (4)  ("Utilities, water and waste")
+	post `handle' (8) ("F") (5)  ("Construction")
+	post `handle' (8) ("G") (6)  ("Wholesale and retail")
+	post `handle' (8) ("H") (7)  ("Accommodation and food")
+	post `handle' (8) ("I") (8)  ("Transport and storage")
+	post `handle' (8) ("J") (9)  ("Information and communications")
+	post `handle' (8) ("K") (10) ("Finance and insurance")
+	post `handle' (8) ("L") (11) ("Real estate and business services")
+	post `handle' (8) ("M") (11) ("Real estate and business services")
+	post `handle' (8) ("N") (12) ("Public administration and defence")
+	post `handle' (8) ("O") (13) ("Education")
+	post `handle' (8) ("P") (14) ("Health and social work")
+	post `handle' (8) ("Q") (15) ("Arts, personal, household and international services")
+	post `handle' (8) ("R") (15) ("Arts, personal, household and international services")
+	post `handle' (8) ("S") (15) ("Arts, personal, household and international services")
+	post `handle' (8) ("T") (15) ("Arts, personal, household and international services")
+
+	* KSIC 9th, 10th and 11th revision mappings.
+	* Industry codes D and E are combined into group 4.
+	* Industry code J maps to group 9 in all revisions, but group 9 is
+	* not fully comparable across the 2003/2004 KSIC 8-to-9 boundary.
+	* KSIC 9 broadened this category relative to KSIC 8, so a visible
+	* level shift around 2004 is expected.
+	* Industry codes L, M and N are combined into group 11.
+	* Industry codes R, S, T and U are combined into group 15.
+	foreach rev in 9 10 11 {
+		post `handle' (`rev') ("A") (1)  ("Agriculture, forestry and fishing")
+		post `handle' (`rev') ("B") (2)  ("Mining")
+		post `handle' (`rev') ("C") (3)  ("Manufacturing")
+		post `handle' (`rev') ("D") (4)  ("Utilities, water and waste")
+		post `handle' (`rev') ("E") (4)  ("Utilities, water and waste")
+		post `handle' (`rev') ("F") (5)  ("Construction")
+		post `handle' (`rev') ("G") (6)  ("Wholesale and retail")
+		post `handle' (`rev') ("H") (8)  ("Transport and storage")
+		post `handle' (`rev') ("I") (7)  ("Accommodation and food")
+		post `handle' (`rev') ("J") (9)  ("Information and communications")
+		post `handle' (`rev') ("K") (10) ("Finance and insurance")
+		post `handle' (`rev') ("L") (11) ("Real estate and business services")
+		post `handle' (`rev') ("M") (11) ("Real estate and business services")
+		post `handle' (`rev') ("N") (11) ("Real estate and business services")
+		post `handle' (`rev') ("O") (12) ("Public administration and defence")
+		post `handle' (`rev') ("P") (13) ("Education")
+		post `handle' (`rev') ("Q") (14) ("Health and social work")
+		post `handle' (`rev') ("R") (15) ("Arts, personal, household and international services")
+		post `handle' (`rev') ("S") (15) ("Arts, personal, household and international services")
+		post `handle' (`rev') ("T") (15) ("Arts, personal, household and international services")
+		post `handle' (`rev') ("U") (15) ("Arts, personal, household and international services")
+	}
+
+	postclose `handle'
+	use `industry_crosswalk', clear
+	isid industry_revision industry_code_raw
+
+	label define industry_code_lbl ///
+	     1 "Agriculture, forestry and fishing" ///
+	     2 "Mining" ///
+	     3 "Manufacturing" ///
+	     4 "Utilities, water and waste" ///
+	     5 "Construction" ///
+	     6 "Wholesale and retail" ///
+	     7 "Accommodation and food" ///
+	     8 "Transport and storage" ///
+	     9 "Information and communications" ///
+	    10 "Finance and insurance" ///
+	    11 "Real estate and business services" ///
+	    12 "Public administration and defence" ///
+	    13 "Education" ///
+	    14 "Health and social work" ///
+	    15 "Arts, personal, household and international services", replace
+	label values industry_code industry_code_lbl
+	label variable industry_code "Harmonised industry group"
+	label variable industry_name "Harmonised industry group name"
+
+	order industry_revision industry_code_raw industry_code industry_name
+	sort industry_revision industry_code_raw
+	save "$CLEAN/industry_crosswalk.dta", replace
+end
+
+
 ** rename helper
 capture program drop safe_rename
 program define safe_rename
@@ -854,7 +953,9 @@ program define clean_one_year
     safe_rename "`activity_status'" activity_status_raw
     safe_rename "`worked_lastweek'" worked_lastweek_raw
 	safe_rename "`prev_work'" prev_work
-    safe_rename "`industry_code'" industry_code
+	safe_rename "`industry_code'" industry_code_raw
+	replace industry_code_raw = trim(industry_code_raw)
+	replace industry_code_raw = "" if inlist(industry_code_raw, "0", "00")
     safe_rename "`occupation_code'" occupation_code
     safe_rename "`worker_status'" worker_status_raw
     safe_rename "`firm_size'" firm_size_raw
@@ -878,6 +979,25 @@ program define clean_one_year
 	
 	** 공통 변수 생성
     gen year = `y'
+
+	* KSIC revision used by the selected source industry variable
+	gen byte industry_revision = .
+	replace industry_revision = 8  if inrange(year, 2001, 2003)
+	replace industry_revision = 9  if inrange(year, 2004, 2012)
+	replace industry_revision = 10 if inrange(year, 2013, 2024)
+	replace industry_revision = 11 if year == 2025
+	label define industry_revision_lbl 8 "KSIC 8th" 9 "KSIC 9th" ///
+	    10 "KSIC 10th" 11 "KSIC 11th", replace
+	label values industry_revision industry_revision_lbl
+	label variable industry_revision "KSIC revision of industry_code_raw"
+
+	* Merge the revision-specific raw code into the 15 common groups.
+	merge m:1 industry_revision industry_code_raw ///
+	    using "$CLEAN/industry_crosswalk.dta", ///
+	    keep(master match) gen(_merge_industry)
+	assert _merge_industry == 3 if industry_code_raw != ""
+	drop _merge_industry
+
 	* Survey weight
 	* Raw MDIS weight is population weight multiplied by 1,000.
 	gen popwt = weight / 1000
@@ -1019,7 +1139,8 @@ label variable permanent "Permanent employee: regular worker with no fixed contr
     gen log_hourly_wage = log(hourly_wage) if hourly_wage > 0
 
     order year survey_ym male gender_raw birth_year age educ_raw grad_year ///
-          marital_raw worker_status_raw wage_worker industry_code occupation_code ///
+          marital_raw worker_status_raw wage_worker industry_revision industry_code_raw ///
+          industry_code industry_name occupation_code ///
           firm_size_raw largefirm monthly_wage hours_week hourly_wage ///
           log_hourly_wage pension healthins employins weight popwt, first
 
@@ -1027,10 +1148,25 @@ label variable permanent "Permanent employee: regular worker with no fixed contr
 end
 
 ** 전체 연도 자동실행
+build_industry_crosswalk
+
 forvalues y = 2001/2025 {
 	clean_one_year `y'
 }
 
+****************************************************
+* Safety checks for harmonised industry mapping
+* 01_clean_all.do checks each yearly file separately.
+* Combined-sample tabs are in 02_append.do.
+****************************************************
+preserve
+	use "$CLEAN/industry_crosswalk.dta", clear
+	isid industry_revision industry_code_raw
+restore
 
-
-
+preserve
+	forvalues y = 2001/2025 {
+		use "$CLEAN/clean_`y'.dta", clear
+		assert missing(industry_code) == missing(industry_code_raw)
+	}
+restore

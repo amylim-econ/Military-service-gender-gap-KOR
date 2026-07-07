@@ -150,7 +150,7 @@ local controls_basic i.educ_raw i.year
 local controls_wage  c.job_tenure_years i.educ_raw i.year 
 local controls_job   c.job_tenure_years i.educ_raw i.year 
 
-encode industry_code, gen(industry_fe)
+clonevar industry_fe = industry_code
 
 * Rich controls: use only where categories are not missing
 * For wage regressions, prefer job tenure/experience over age because military service
