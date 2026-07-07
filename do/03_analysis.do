@@ -327,6 +327,65 @@ foreach g in 1 2 3 {
 }
 
 ****************************************************
+* 4B. Comparable main specification table
+* Full sample and industry-gender subgroups use the same controls.
+* No industry fixed effects are included in this section.
+* The employed outcome is excluded because industry type is assigned
+* from observed current industry.
+****************************************************
+
+foreach yvar in entry_age largefirm permanent log_hourly_wage_trim log_monthly_wage_trim {
+
+	if "`yvar'" == "entry_age" {
+		local ctrls `controls_basic'
+		local sample_base "wage_worker == 1"
+		local ystem entry
+	}
+	else if "`yvar'" == "largefirm" {
+		local ctrls `controls_sub_job'
+		local sample_base "wage_worker == 1"
+		local ystem large
+	}
+	else if "`yvar'" == "permanent" {
+		local ctrls `controls_sub_job'
+		local sample_base "wage_worker == 1"
+		local ystem perm
+	}
+	else if "`yvar'" == "log_hourly_wage_trim" {
+		local ctrls `controls_sub_wage'
+		local sample_base "wage_worker == 1"
+		local ystem lhw
+	}
+	else {
+		local ctrls `controls_sub_wage'
+		local sample_base "wage_worker == 1"
+		local ystem mwage
+	}
+
+	reg `yvar' i.male##i.post_military `ctrls' ///
+	    if `sample_base' & !missing(industry_gender_type), vce(cluster cohort)
+	estimates store main_`ystem'_full
+	capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
+	if !_rc scalar boot_p_main = r(p)
+	else scalar boot_p_main = .
+	estadd scalar boot_p = boot_p_main : main_`ystem'_full
+
+	foreach g in 1 2 3 {
+		if `g' == 1 local gname maleind
+		if `g' == 2 local gname femaleind
+		if `g' == 3 local gname mixedind
+
+		reg `yvar' i.male##i.post_military `ctrls' ///
+		    if `sample_base' & industry_gender_type == `g', vce(cluster cohort)
+		estimates store main_`ystem'_`gname'
+		capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
+		if !_rc scalar boot_p_main = r(p)
+		else scalar boot_p_main = .
+		estadd scalar boot_p = boot_p_main : main_`ystem'_`gname'
+	}
+}
+
+****************************************************
 * Bootstrap p-values print & save
 ****************************************************
 
@@ -595,6 +654,30 @@ esttab did_entry_maleind did_entry_femaleind did_entry_mixedind ///
     scalars("boot_p Bootstrap \$p\$-value") ///
     sfmt(%9.3f) ///
     booktabs nonumber noobs nonotes fragment
+
+* ---- Main specification table: comparable full sample and subgroups ----
+esttab main_entry_full main_entry_maleind main_entry_femaleind main_entry_mixedind ///
+    main_large_full main_large_maleind main_large_femaleind main_large_mixedind ///
+    main_perm_full main_perm_maleind main_perm_femaleind main_perm_mixedind ///
+    main_lhw_full main_lhw_maleind main_lhw_femaleind main_lhw_mixedind ///
+    main_mwage_full main_mwage_maleind main_mwage_femaleind main_mwage_mixedind ///
+    using "$OUT/main_did_by_industry_gender_type.tex", replace ///
+    keep(1.male#1.post_military) ///
+    coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
+    mtitles("Full" "Male-dom." "Female-dom." "Mixed" ///
+        "Full" "Male-dom." "Female-dom." "Mixed" ///
+        "Full" "Male-dom." "Female-dom." "Mixed" ///
+        "Full" "Male-dom." "Female-dom." "Mixed" ///
+        "Full" "Male-dom." "Female-dom." "Mixed") ///
+    mgroups("Entry age" "Large firm" "Permanent" ///
+        "Log hourly wage" "Log monthly wage", ///
+        pattern(1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0) ///
+        prefix(\multicolumn{@span}{c}{) suffix(}) span) ///
+    se star(* 0.10 ** 0.05 *** 0.01) ///
+    stats(N r2 boot_p, ///
+        labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
+        fmt(%9.0fc %9.3f %9.3f)) ///
+    booktabs nonumber nonotes fragment
 }
 
 ****************************************************
