@@ -560,7 +560,24 @@ foreach yvar in entry_age largefirm permanent log_hourly_wage_trim {
 			quietly use "`coef_`ystem'_`gname''", clear
 			export delimited using "$OUT/eventstudy_`ystem'_`gname'.csv", replace
 		restore
+	}
 
+	preserve
+		quietly use "`coef_`ystem'_maleind'", clear
+		append using "`coef_`ystem'_femaleind'"
+		summarize lb, meanonly
+		local ymin = floor(r(min) * 10) / 10
+		summarize ub, meanonly
+		local ymax = ceil(r(max) * 10) / 10
+		if `ymin' > 0 local ymin = 0
+		if `ymax' < 0 local ymax = 0
+		local ystep = (`ymax' - `ymin') / 4
+		local ystep = ceil(`ystep' * 100) / 100
+	restore
+
+	foreach g in 1 2 {
+		if `g' == 1 local gname maleind
+		if `g' == 2 local gname femaleind
 		preserve
 			quietly use "`coef_`ystem'_`gname''", clear
 			sort rel_cohort
@@ -576,6 +593,8 @@ foreach yvar in entry_age largefirm permanent log_hourly_wage_trim {
 			    yline(0, lpattern(dash) lcolor(gs10)) ///
 			    xtitle("Relative birth cohort (k)") ///
 			    ytitle("Male × cohort coefficient") ///
+			    yscale(range(`ymin' `ymax')) ///
+			    ylabel(`ymin'(`ystep')`ymax') ///
 			    title("`gtitle'") ///
 			    legend(off) ///
 			    name(es_`ystem'_`gname', replace)
@@ -647,9 +666,9 @@ esttab did_entry_maleind did_entry_femaleind did_entry_mixedind ///
         "Male-dom." "Female-dom." "Mixed" ///
         "Male-dom." "Female-dom." "Mixed" ///
         "Male-dom." "Female-dom." "Mixed") ///
-    mgroups("Entry age" "Large firm" "Permanent" ///
-        "Log hourly wage" "Log monthly wage", pattern(1 0 0 1 0 0 1 0 0 1 0 0 1 0 0) ///
-        prefix(\multicolumn{@span}{c}{) suffix(}) span) ///
+	    mgroups("Entry age" "Large firm" "Permanent" ///
+	        "Log hourly wage" "Log monthly wage", pattern(1 0 0 1 0 0 1 0 0 1 0 0 1 0 0) ///
+	        prefix("\multicolumn{@span}{c}{") suffix("}") span) ///
     se star(* 0.10 ** 0.05 *** 0.01) ///
     scalars("boot_p Bootstrap \$p\$-value") ///
     sfmt(%9.3f) ///
@@ -669,10 +688,10 @@ esttab main_entry_full main_entry_maleind main_entry_femaleind main_entry_mixedi
         "Full" "Male-dom." "Female-dom." "Mixed" ///
         "Full" "Male-dom." "Female-dom." "Mixed" ///
         "Full" "Male-dom." "Female-dom." "Mixed") ///
-    mgroups("Entry age" "Large firm" "Permanent" ///
-        "Log hourly wage" "Log monthly wage", ///
-        pattern(1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0) ///
-        prefix(\multicolumn{@span}{c}{) suffix(}) span) ///
+	    mgroups("Entry age" "Large firm" "Permanent" ///
+	        "Log hourly wage" "Log monthly wage", ///
+	        pattern(1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0) ///
+	        prefix("\multicolumn{@span}{c}{") suffix("}") span) ///
     se star(* 0.10 ** 0.05 *** 0.01) ///
     stats(N r2 boot_p, ///
         labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
