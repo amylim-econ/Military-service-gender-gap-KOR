@@ -69,6 +69,7 @@ program define set_source_map
 	local weight
 	local labour_force
 	local experience_raw
+	local continued_work
 	local hours_week
 	local healthins_raw
 	local employins_raw
@@ -104,6 +105,7 @@ program define set_source_map
         local weight         v35
 		local labour_force	 v40
 		local experience_raw v41
+		local continued_work v47
         local hours_week     v52
         local pension_raw    v57
         local healthins_raw  v58
@@ -138,6 +140,7 @@ program define set_source_map
         local weight         v35
 		local labour_force	 v40
 		local experience_raw v41
+		local continued_work v47
         local hours_week     v53
         local pension_raw    v58
         local healthins_raw  v59
@@ -170,6 +173,7 @@ program define set_source_map
         local firm_size      v38
         local age            v46
         local weight         v47
+		local continued_work v50
 		local labour_force	
 		local experience_raw v40
         local hours_week     v56
@@ -210,6 +214,7 @@ program define set_source_map
         local weight         v43
 		local labour_force	v50
 		local experience_raw v40
+		local continued_work v53
         local hours_week     v59
         local pension_raw    v64
         local healthins_raw  v65
@@ -245,6 +250,7 @@ program define set_source_map
         local weight         v43
 		local labour_force	v50
 		local experience_raw v40
+		local continued_work v53
         local hours_week     v59
         local pension_raw    v64
         local healthins_raw  v65
@@ -279,6 +285,7 @@ program define set_source_map
         local weight         v43
 		local labour_force	v50
 		local experience_raw v40
+		local continued_work v53
         local hours_week     v59
         local pension_raw    v65
         local healthins_raw  v66
@@ -312,6 +319,7 @@ program define set_source_map
         local age            v47
         local weight         v43
 		local labour_force	v50
+		local continued_work v53
 		local experience_raw v40
         local hours_week     v59
         local pension_raw    v65
@@ -347,6 +355,7 @@ program define set_source_map
         local weight         v47
 		local labour_force	v48
 		local experience_raw v40
+		local continued_work v51
         local hours_week     v57
         local pension_raw    v63
         local healthins_raw  v64
@@ -381,6 +390,7 @@ program define set_source_map
         local weight         v43
 		local labour_force	v48
 		local experience_raw v40
+		local continued_work v51
         local hours_week     v57
         local pension_raw    v63
         local healthins_raw  v64
@@ -415,6 +425,7 @@ program define set_source_map
         local weight         v43
 		local labour_force	v48
 		local experience_raw v40
+		local continued_work v51
         local hours_week     v57
         local pension_raw    v63
         local healthins_raw  v64
@@ -449,6 +460,7 @@ program define set_source_map
         local weight         v43
 		local labour_force	v48
 		local experience_raw v40
+		local continued_work v51
         local hours_week     v57
         local pension_raw    v63
         local healthins_raw  v64
@@ -482,6 +494,7 @@ program define set_source_map
         local age            v50
         local weight         v46
 		local labour_force	v51
+		local continued_work v54
 		local experience_raw v41
         local hours_week     v60
         local pension_raw    v66
@@ -516,6 +529,7 @@ program define set_source_map
         local age            v49
         local weight         v51
 		local labour_force	v56
+		local continued_work v59
 		local experience_raw v33
         local hours_week     v66
         local pension_raw    v72
@@ -552,6 +566,7 @@ program define set_source_map
         local weight         v51
 		local labour_force	v56
 		local experience_raw v33
+		local continued_work v59
         local hours_week     v66
         local pension_raw    v72
         local healthins_raw  v73
@@ -586,6 +601,7 @@ program define set_source_map
         local age            v51
         local weight         v55
 		local labour_force	v61
+		local continued_work v64
 		local experience_raw v35
         local hours_week     v75
         local pension_raw    v81
@@ -620,6 +636,7 @@ if `y'== 2016 {
         local age            v58
         local weight         v60
 		local labour_force	v65
+		local continued_work v68
 		local experience_raw v31
         local hours_week     v75
         local pension_raw    v81
@@ -655,6 +672,7 @@ if `y'== 2016 {
         local age            v58
         local weight         v60
 		local labour_force	v65
+		local continued_work v68
 		local experience_raw v31
         local hours_week     v75
         local pension_raw    v81
@@ -689,6 +707,7 @@ if `y'== 2016 {
         local age            v54
         local weight         v56
 		local labour_force	v61
+		local continued_work v64
 		local experience_raw v29
         local hours_week     v71
         local pension_raw    v77
@@ -723,6 +742,7 @@ if `y'== 2016 {
         local age            v58
         local weight         v60
 		local labour_force	v61
+		local continued_work v64
 		local experience_raw v30
         local hours_week     v71
         local pension_raw    v77
@@ -757,6 +777,7 @@ if `y'== 2016 {
         local age            v54
         local weight         v56
 		local labour_force	v57
+		local continued_work v60
 		local experience_raw v29
         local hours_week     v67
         local pension_raw    v73
@@ -791,6 +812,7 @@ if `y'== 2016 {
     c_local weight         `weight'
 	c_local labour_force	`labour_force'
 	c_local experience_raw `experience_raw'
+	c_local continued_work `continued_work'
     c_local hours_week     `hours_week'
     c_local pension_raw    `pension_raw'
     c_local healthins_raw  `healthins_raw'
@@ -937,7 +959,7 @@ program define clean_one_year
 	
 	*필요한 변수만 남기기 전에 source 변수 목록 만들기
 	local keep_src
-	foreach nm in survey_ym gender birth_year educ educ_attend grad_year marital activity_status worked_lastweek prev_work industry_code occupation_code worker_status firm_size age weight labour_force experience_raw hours_week pension_raw healthins_raw employins_raw severance bonus overtime_pay paid_leave union_raw monthly_wage fivedays_working flexible_work contract_work {
+	foreach nm in survey_ym gender birth_year educ educ_attend grad_year marital activity_status worked_lastweek prev_work continued_work industry_code occupation_code worker_status firm_size age weight labour_force experience_raw hours_week pension_raw healthins_raw employins_raw severance bonus overtime_pay paid_leave union_raw monthly_wage fivedays_working flexible_work contract_work {
 		if "``nm''" != "" local keep_src `keep_src' ``nm''
 	}
 	keep `keep_src'
@@ -953,6 +975,7 @@ program define clean_one_year
     safe_rename "`activity_status'" activity_status_raw
     safe_rename "`worked_lastweek'" worked_lastweek_raw
 	safe_rename "`prev_work'" prev_work
+	safe_rename "`continued_work'" continued_work_raw
 	safe_rename "`industry_code'" industry_code_raw
 	replace industry_code_raw = trim(industry_code_raw)
 	replace industry_code_raw = "" if inlist(industry_code_raw, "0", "00")
@@ -1132,6 +1155,14 @@ label variable contract_fixed "Fixed-term contract indicator, harmonised across 
 label values permanent permanent_lbl
 
 label variable permanent "Permanent employee: regular worker with no fixed contract term"
+
+	* Whether current work can continue
+	gen can_continue = .
+	replace can_continue = 1 if continued_work_raw == 1
+	replace can_continue = 0 if continued_work_raw == 2
+
+	label variable continued_work_raw "Raw code: whether current work can continue"
+	label variable can_continue "Current work can continue"
 	
     * hourly wage
     gen monthly_hours = hours_week * 4.345 if hours_week < .
@@ -1139,7 +1170,8 @@ label variable permanent "Permanent employee: regular worker with no fixed contr
     gen log_hourly_wage = log(hourly_wage) if hourly_wage > 0
 
     order year survey_ym male gender_raw birth_year age educ_raw grad_year ///
-          marital_raw worker_status_raw wage_worker industry_revision industry_code_raw ///
+          marital_raw worker_status_raw wage_worker continued_work_raw ///
+          can_continue industry_revision industry_code_raw ///
           industry_code industry_name occupation_code ///
           firm_size_raw largefirm monthly_wage hours_week hourly_wage ///
           log_hourly_wage pension healthins employins weight popwt, first
