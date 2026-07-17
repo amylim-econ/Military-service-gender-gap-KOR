@@ -31,7 +31,7 @@ use "$CLEAN/mdis_master_2001_2025.dta", clear
 * Required cleaned variables
 ****************************************************
 foreach v in year wage_worker monthly_wage_clean hours_week permanent ///
-    can_continue pension healthins employins {
+    can_continue pension healthins employins employins_raw {
     capture confirm variable `v'
     if _rc {
         display as error "Required variable `v' not found. Run 01_clean_all.do and 02_append.do first."
@@ -45,16 +45,26 @@ foreach v in year wage_worker monthly_wage_clean hours_week permanent ///
 capture drop monthly_wage_for_median
 capture drop monthly_wage_median_year
 capture drop monthly_wage_cutoff50_year
+capture drop monthly_wage_cutoff667_year
 capture drop dep_low_monthly_wage
+capture drop dep_low_monthly_wage50
+capture drop dep_low_monthly_wage667
 capture drop dep_nonpermanent
 capture drop dep_no_continuity
 capture drop dep_excess_hours
 capture drop has_core_ins_pkg
 capture drop dep_no_social_insurance_package
 capture drop qoe_income_deprivation
+capture drop qoe_income_deprivation50
+capture drop qoe_income_deprivation667
 capture drop qoe_stability_deprivation
 capture drop qoe_conditions_deprivation
 capture drop qoe_deprivation_score
+capture drop qoe_deprivation_score50
+capture drop qoe_deprivation_score667
+capture drop qoe_multidim_deprived50
+capture drop qoe_multidim_deprived667
+capture drop qoe_complete
 
 ****************************************************
 * Dimension 1: Income from labour
@@ -68,21 +78,34 @@ bysort year: egen monthly_wage_median_year = ///
     median(monthly_wage_for_median)
 
 gen monthly_wage_cutoff50_year = 0.5 * monthly_wage_median_year
+gen monthly_wage_cutoff667_year = (2/3) * monthly_wage_median_year
 
-gen dep_low_monthly_wage = .
-replace dep_low_monthly_wage = 1 if wage_worker == 1 ///
+gen dep_low_monthly_wage50 = .
+replace dep_low_monthly_wage50 = 1 if wage_worker == 1 ///
     & monthly_wage_clean > 0 ///
     & monthly_wage_clean < monthly_wage_cutoff50_year
-replace dep_low_monthly_wage = 0 if wage_worker == 1 ///
+replace dep_low_monthly_wage50 = 0 if wage_worker == 1 ///
     & monthly_wage_clean >= monthly_wage_cutoff50_year ///
+    & monthly_wage_clean < .
+
+gen dep_low_monthly_wage667 = .
+replace dep_low_monthly_wage667 = 1 if wage_worker == 1 ///
+    & monthly_wage_clean > 0 ///
+    & monthly_wage_clean < monthly_wage_cutoff667_year
+replace dep_low_monthly_wage667 = 0 if wage_worker == 1 ///
+    & monthly_wage_clean >= monthly_wage_cutoff667_year ///
     & monthly_wage_clean < .
 
 label variable monthly_wage_median_year ///
     "Year-specific median monthly wage among wage workers"
 label variable monthly_wage_cutoff50_year ///
     "50% of year-specific median monthly wage among wage workers"
-label variable dep_low_monthly_wage ///
+label variable monthly_wage_cutoff667_year ///
+    "Two-thirds of year-specific median monthly wage among wage workers"
+label variable dep_low_monthly_wage50 ///
     "QoE deprivation: monthly wage below 50% of yearly median"
+label variable dep_low_monthly_wage667 ///
+    "QoE deprivation: monthly wage below two-thirds of yearly median"
 
 drop monthly_wage_for_median
 
@@ -105,8 +128,8 @@ label variable dep_no_continuity ///
 
 ****************************************************
 * Dimension 3: Employment conditions
-* Deprived if weekly hours exceed 48 hours, or if any of the
-* three core social insurances is missing.
+* Deprived if weekly hours exceed 48 hours, or if any applicable
+* job-linked social insurance is not covered.
 ****************************************************
 gen dep_excess_hours = .
 replace dep_excess_hours = 1 if wage_worker == 1 ///
@@ -115,8 +138,16 @@ replace dep_excess_hours = 0 if wage_worker == 1 ///
     & hours_week >= 0 & hours_week <= 48
 
 gen has_core_ins_pkg = .
+
+* Employment-insurance raw code 0 denotes institutional non-applicability,
+* concentrated among public administration, education, and related workers
+* who have workplace pension and health-insurance coverage. Treat this as
+* satisfying all applicable insurance requirements, not as missing coverage.
 replace has_core_ins_pkg = 1 if wage_worker == 1 ///
-    & pension == 1 & healthins == 1 & employins == 1
+    & pension == 1 & healthins == 1 ///
+    & (employins == 1 | employins_raw == 0)
+
+* Explicit non-coverage in any applicable programme implies deprivation.
 replace has_core_ins_pkg = 0 if wage_worker == 1 ///
     & (pension == 0 | healthins == 0 | employins == 0)
 
@@ -129,43 +160,127 @@ replace dep_no_social_insurance_package = 0 ///
 label variable dep_excess_hours ///
     "QoE deprivation: usual weekly hours exceed 48"
 label variable has_core_ins_pkg ///
-    "Has pension, health insurance, and employment insurance"
+    "Has all applicable job-linked social insurances"
 label variable dep_no_social_insurance_package ///
-    "QoE deprivation: lacks any core social insurance"
+    "QoE deprivation: lacks any applicable job-linked social insurance"
 
 ****************************************************
-* Dimension scores and overall QoE deprivation score
+* Dimension scores and overall QoE deprivation scores
+* Main scores use a common complete-case sample so that missing indicators
+* never cause the remaining indicators to receive larger implicit weights.
 * Scores are 0-1, with higher values meaning greater deprivation.
 ****************************************************
-egen qoe_income_deprivation = rowmean(dep_low_monthly_wage)
-egen qoe_stability_deprivation = rowmean(dep_nonpermanent dep_no_continuity)
-egen qoe_conditions_deprivation = rowmean(dep_excess_hours ///
-    dep_no_social_insurance_package)
+gen byte qoe_complete = wage_worker == 1 ///
+    & !missing(dep_low_monthly_wage50, dep_nonpermanent, ///
+        dep_no_continuity, dep_excess_hours, ///
+        dep_no_social_insurance_package)
 
-egen qoe_deprivation_score = rowmean(qoe_income_deprivation ///
-    qoe_stability_deprivation qoe_conditions_deprivation)
+gen double qoe_income_deprivation50 = dep_low_monthly_wage50 ///
+    if qoe_complete == 1
+gen double qoe_income_deprivation667 = dep_low_monthly_wage667 ///
+    if qoe_complete == 1
 
-label variable qoe_income_deprivation ///
-    "QoE income deprivation score"
+gen double qoe_stability_deprivation = ///
+    (dep_nonpermanent + dep_no_continuity) / 2 ///
+    if qoe_complete == 1
+gen double qoe_conditions_deprivation = ///
+    (dep_excess_hours + dep_no_social_insurance_package) / 2 ///
+    if qoe_complete == 1
+
+gen double qoe_deprivation_score50 = ///
+      (1/3) * dep_low_monthly_wage50 ///
+    + (1/6) * dep_nonpermanent ///
+    + (1/6) * dep_no_continuity ///
+    + (1/6) * dep_excess_hours ///
+    + (1/6) * dep_no_social_insurance_package ///
+    if qoe_complete == 1
+
+gen double qoe_deprivation_score667 = ///
+      (1/3) * dep_low_monthly_wage667 ///
+    + (1/6) * dep_nonpermanent ///
+    + (1/6) * dep_no_continuity ///
+    + (1/6) * dep_excess_hours ///
+    + (1/6) * dep_no_social_insurance_package ///
+    if qoe_complete == 1
+
+gen byte qoe_multidim_deprived50 = ///
+    qoe_deprivation_score50 >= 1/3 ///
+    if qoe_complete == 1
+gen byte qoe_multidim_deprived667 = ///
+    qoe_deprivation_score667 >= 1/3 ///
+    if qoe_complete == 1
+
+label variable qoe_complete ///
+    "All five QoE deprivation indicators observed"
+label variable qoe_income_deprivation50 ///
+    "QoE income deprivation score: 50% median cutoff"
+label variable qoe_income_deprivation667 ///
+    "QoE income deprivation score: two-thirds median cutoff"
 label variable qoe_stability_deprivation ///
     "QoE employment stability deprivation score"
 label variable qoe_conditions_deprivation ///
     "QoE employment conditions deprivation score"
-label variable qoe_deprivation_score ///
-    "QoE overall deprivation score"
+label variable qoe_deprivation_score50 ///
+    "QoE overall deprivation score: 50% median cutoff"
+label variable qoe_deprivation_score667 ///
+    "QoE overall deprivation score: two-thirds median cutoff"
+label variable qoe_multidim_deprived50 ///
+    "Multidimensionally QoE deprived: score >= 1/3, 50% cutoff"
+label variable qoe_multidim_deprived667 ///
+    "Multidimensionally QoE deprived: score >= 1/3, two-thirds cutoff"
+
+****************************************************
+* Internal consistency checks
+****************************************************
+assert inrange(qoe_deprivation_score50, 0, 1) ///
+    if !missing(qoe_deprivation_score50)
+assert inrange(qoe_deprivation_score667, 0, 1) ///
+    if !missing(qoe_deprivation_score667)
+assert !missing(qoe_deprivation_score50, qoe_deprivation_score667) ///
+    if qoe_complete == 1
+assert missing(qoe_deprivation_score50, qoe_deprivation_score667) ///
+    if qoe_complete == 0
+
+* Anyone below 50% of the median must also be below two-thirds.
+assert dep_low_monthly_wage50 <= dep_low_monthly_wage667 ///
+    if !missing(dep_low_monthly_wage50, dep_low_monthly_wage667)
+
+tempvar qoe_score_check50 qoe_score_check667
+gen double `qoe_score_check50' = ///
+      (1/3) * dep_low_monthly_wage50 ///
+    + (1/6) * dep_nonpermanent ///
+    + (1/6) * dep_no_continuity ///
+    + (1/6) * dep_excess_hours ///
+    + (1/6) * dep_no_social_insurance_package ///
+    if qoe_complete == 1
+gen double `qoe_score_check667' = ///
+      (1/3) * dep_low_monthly_wage667 ///
+    + (1/6) * dep_nonpermanent ///
+    + (1/6) * dep_no_continuity ///
+    + (1/6) * dep_excess_hours ///
+    + (1/6) * dep_no_social_insurance_package ///
+    if qoe_complete == 1
+assert abs(qoe_deprivation_score50 - `qoe_score_check50') < 1e-12 ///
+    if qoe_complete == 1
+assert abs(qoe_deprivation_score667 - `qoe_score_check667') < 1e-12 ///
+    if qoe_complete == 1
 
 ****************************************************
 * Diagnostics
 ****************************************************
 display as text "QoE deprivation indicators by year"
-tab year dep_low_monthly_wage, missing
+tab year dep_low_monthly_wage50, missing
+tab year dep_low_monthly_wage667, missing
 tab year dep_nonpermanent, missing
 tab year dep_no_continuity, missing
 tab year dep_excess_hours, missing
 tab year dep_no_social_insurance_package, missing
+tab year qoe_complete, missing
 
-summ monthly_wage_cutoff50_year qoe_income_deprivation ///
+summ monthly_wage_cutoff50_year monthly_wage_cutoff667_year ///
+    qoe_income_deprivation50 qoe_income_deprivation667 ///
     qoe_stability_deprivation qoe_conditions_deprivation ///
-    qoe_deprivation_score, detail
+    qoe_deprivation_score50 qoe_deprivation_score667 ///
+    qoe_multidim_deprived50 qoe_multidim_deprived667, detail
 
 save "$CLEAN/mdis_master_qoe_2001_2025.dta", replace

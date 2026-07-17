@@ -1094,18 +1094,47 @@ label var log_monthly_wage_trim "Log monthly wage, within-year p1-p99 trimmed"
     replace largefirm = 1 if firm_size_raw == 6
     replace largefirm = 0 if inrange(firm_size_raw,1,5)
 
-    * insurance
-    gen pension = .
-    replace pension = 1 if inlist(pension_raw,1,11,21,31)
-    replace pension = 0 if inlist(pension_raw,2,12,22,32)
+    ****************************************************
+    * Job-linked social insurance harmonisation
+    * Codes are based on the year-specific insurance code table.
+    * Leading-zero CSV codes are imported numerically (e.g. 012 -> 12).
+    * Only coverage through the current job is coded as 1.
+    ****************************************************
 
+    * Pension: workplace enrolment only.
+    * 11 is the earlier yes code; 111 is workplace enrolment.
+    * Regional enrolment (112), beneficiary status (113), and no (12)
+    * are not job-linked coverage and are therefore coded as 0.
+    * Raw 0 (shown as 00/000 in CSV files) means not applicable and remains missing.
+    assert inlist(pension_raw, 11, 12, 111, 112, 113) ///
+        if pension_raw < . & pension_raw != 0
+    gen pension = .
+    replace pension = 1 if inlist(pension_raw, 11, 111)
+    replace pension = 0 if inlist(pension_raw, 12, 112, 113)
+
+    * Health insurance: workplace enrolment only.
+    * 21 is the earlier workplace-insurance yes code; 211 is workplace
+    * enrolment. Regional enrolment (212), medical-aid entitlement (213),
+    * workplace-insured dependant status (214), and no (22) are coded as 0.
+    assert inlist(healthins_raw, 21, 22, 211, 212, 213, 214) ///
+        if healthins_raw < . & healthins_raw != 0
     gen healthins = .
-    replace healthins = 1 if inlist(healthins_raw,1,11,21,31)
-    replace healthins = 0 if inlist(healthins_raw,2,12,22,32)
+    replace healthins = 1 if inlist(healthins_raw, 21, 211)
+    replace healthins = 0 if inlist(healthins_raw, 22, 212, 213, 214)
 	
+    * Employment insurance: current-job enrolment yes/no in every year.
+    assert inlist(employins_raw, 31, 32) ///
+        if employins_raw < . & employins_raw != 0
 	gen employins = .
-    replace employins = 1 if inlist(employins_raw,1,11,21,31)
-    replace employins = 0 if inlist(employins_raw,2,12,22,32)
+    replace employins = 1 if employins_raw == 31
+    replace employins = 0 if employins_raw == 32
+
+    label variable pension ///
+        "Workplace pension enrolment through current job"
+    label variable healthins ///
+        "Workplace health-insurance enrolment through current job"
+    label variable employins ///
+        "Employment-insurance enrolment through current job"
 	
 	gen severance = .
     replace severance = 1 if inlist(severance_raw,1,11,21,31)
