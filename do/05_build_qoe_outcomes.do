@@ -25,13 +25,21 @@ if _rc {
     global CLEAN "data_clean"
 }
 
+capture confirm global OUT
+if _rc {
+    global OUT "output"
+}
+
+capture mkdir "$OUT"
+
 use "$CLEAN/mdis_master_2001_2025.dta", clear
 
 ****************************************************
 * Required cleaned variables
 ****************************************************
-foreach v in year wage_worker monthly_wage_clean hours_week permanent ///
-    can_continue pension healthins employins employins_raw {
+foreach v in year male birth_year age wage_worker monthly_wage_clean ///
+    hours_week permanent can_continue pension healthins employins ///
+    employins_raw {
     capture confirm variable `v'
     if _rc {
         display as error "Required variable `v' not found. Run 01_clean_all.do and 02_append.do first."
@@ -76,6 +84,7 @@ gen monthly_wage_for_median = monthly_wage_clean ///
 
 bysort year: egen monthly_wage_median_year = ///
     median(monthly_wage_for_median)
+bysort year: egen wage_obs_year = total(!missing(monthly_wage_for_median))
 
 gen monthly_wage_cutoff50_year = 0.5 * monthly_wage_median_year
 gen monthly_wage_cutoff667_year = (2/3) * monthly_wage_median_year
@@ -98,6 +107,8 @@ replace dep_low_monthly_wage667 = 0 if wage_worker == 1 ///
 
 label variable monthly_wage_median_year ///
     "Year-specific median monthly wage among wage workers"
+label variable wage_obs_year ///
+    "Positive monthly-wage observations used for yearly median"
 label variable monthly_wage_cutoff50_year ///
     "50% of year-specific median monthly wage among wage workers"
 label variable monthly_wage_cutoff667_year ///
@@ -106,6 +117,20 @@ label variable dep_low_monthly_wage50 ///
     "QoE deprivation: monthly wage below 50% of yearly median"
 label variable dep_low_monthly_wage667 ///
     "QoE deprivation: monthly wage below two-thirds of yearly median"
+
+****************************************************
+* Export the income-deprivation thresholds used in the analysis period
+* Medians are unweighted and calculated among all-age wage workers.
+****************************************************
+preserve
+    keep if inrange(year, 2015, 2025)
+    keep year wage_obs_year monthly_wage_median_year ///
+        monthly_wage_cutoff50_year monthly_wage_cutoff667_year
+    duplicates drop year, force
+    sort year
+    isid year
+    export delimited using "$OUT/qoe_income_cutoffs_2015_2025.csv", replace
+restore
 
 drop monthly_wage_for_median
 
@@ -282,5 +307,69 @@ summ monthly_wage_cutoff50_year monthly_wage_cutoff667_year ///
     qoe_stability_deprivation qoe_conditions_deprivation ///
     qoe_deprivation_score50 qoe_deprivation_score667 ///
     qoe_multidim_deprived50 qoe_multidim_deprived667, detail
+
+****************************************************
+* Export unweighted QoE means and missingness by year and gender
+* Sample matches the dissertation analysis window and event-study cohorts.
+* QoE means use the common complete-case sample; missingness rates use all
+* wage workers in the analysis sample as the denominator.
+****************************************************
+preserve
+    keep if inrange(year, 2015, 2025)
+    keep if inrange(age, 18, 39)
+    keep if !missing(male, birth_year)
+    keep if inrange(birth_year - 1997, -5, 5)
+    keep if wage_worker == 1
+
+    gen long summary_obs = 1
+
+    gen byte miss_income50  = missing(dep_low_monthly_wage50)
+    gen byte miss_nonperm   = missing(dep_nonpermanent)
+    gen byte miss_continuity = missing(dep_no_continuity)
+    gen byte miss_hours     = missing(dep_excess_hours)
+    gen byte miss_social    = missing(dep_no_social_insurance_package)
+
+    * Complete-case copies ensure identical denominators across QoE means.
+    gen double cc_income50   = dep_low_monthly_wage50 if qoe_complete == 1
+    gen double cc_nonperm    = dep_nonpermanent if qoe_complete == 1
+    gen double cc_continuity = dep_no_continuity if qoe_complete == 1
+    gen double cc_hours      = dep_excess_hours if qoe_complete == 1
+    gen double cc_social     = dep_no_social_insurance_package ///
+        if qoe_complete == 1
+
+    collapse ///
+        (sum) wage_worker_n=summary_obs complete_n=qoe_complete ///
+        (mean) complete_rate=qoe_complete ///
+            missing_income50=miss_income50 ///
+            missing_nonperm=miss_nonperm ///
+            missing_continuity=miss_continuity ///
+            missing_hours=miss_hours ///
+            missing_social=miss_social ///
+            mean_income50=cc_income50 ///
+            mean_nonperm=cc_nonperm ///
+            mean_no_continuity=cc_continuity ///
+            mean_excess_hours=cc_hours ///
+            mean_no_social_insurance=cc_social ///
+            mean_income_dimension50=qoe_income_deprivation50 ///
+            mean_stability_dimension=qoe_stability_deprivation ///
+            mean_conditions_dimension=qoe_conditions_deprivation ///
+            mean_qoe_score50=qoe_deprivation_score50 ///
+            mean_multidim_deprived50=qoe_multidim_deprived50 ///
+            mean_qoe_score667=qoe_deprivation_score667 ///
+            mean_multidim_deprived667=qoe_multidim_deprived667, ///
+        by(year male)
+
+    sort year male
+    isid year male
+    assert _N == 22
+    assert inrange(complete_rate, 0, 1)
+
+    order year male wage_worker_n complete_n complete_rate ///
+        missing_income50 missing_nonperm missing_continuity ///
+        missing_hours missing_social
+
+    export delimited using ///
+        "$OUT/qoe_summary_by_year_gender_2015_2025.csv", replace
+restore
 
 save "$CLEAN/mdis_master_qoe_2001_2025.dta", replace
