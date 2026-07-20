@@ -1,0 +1,6 @@
+outcome,event_bin,bin_label,beta,cluster_se,wild_p
+qoe_deprivation_score50,0,"Early pre (k=-5,-4)",.0011824991221803,.0072156363,.81347656
+qoe_deprivation_score50,1,"Near pre (k=-3,-2)",-.0004402701652003,.0060611404,.78808594
+qoe_deprivation_score50,2,Reference (k=-1),0,0,
+qoe_deprivation_score50,3,"Partial reduction (k=0,1,2)",-.0328800358003899,.012080031,.25195313
+qoe_deprivation_score50,4,"Full reduction (k=3,4,5)",-.0392648311525682,.011518928,.0703125

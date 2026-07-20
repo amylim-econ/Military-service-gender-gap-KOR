@@ -1,0 +1,6 @@
+outcome,event_bin,bin_label,beta,cluster_se,wild_p
+qoe_conditions_deprivation,0,"Early pre (k=-5,-4)",-.007626466449354,.013899948,.71289063
+qoe_conditions_deprivation,1,"Near pre (k=-3,-2)",-.000862958328354,.0014395774,.58886719
+qoe_conditions_deprivation,2,Reference (k=-1),0,0,
+qoe_conditions_deprivation,3,"Partial reduction (k=0,1,2)",-.0432903599439493,.0094625009,.140625
+qoe_conditions_deprivation,4,"Full reduction (k=3,4,5)",-.0420581080274316,.0046805469,.029296875
