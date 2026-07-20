@@ -230,6 +230,63 @@ boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
 scalar boot_p_did_mwage_entry = r(p)
 estadd scalar boot_p = boot_p_did_mwage_entry : did_mwage_entry
 
+****************************************************
+* 4A. Sequential wage controls: total versus conditional effects
+*
+* These specifications retain the original wage regressions above and
+* diagnose how the Male x Post coefficient changes as potentially
+* post-treatment job characteristics are added. Education is introduced
+* first, followed by current-job tenure, occupation, and current industry.
+*
+* The primary sequence uses each specification's available sample. A second
+* common-sample sequence holds observations fixed across all five columns so
+* coefficient changes are not mechanically driven by missing controls.
+****************************************************
+
+local wage_seq_1 i.year
+local wage_seq_2 i.educ_raw i.year
+local wage_seq_3 c.job_tenure_years i.educ_raw i.year
+local wage_seq_4 c.job_tenure_years i.educ_raw i.year i.occupation_code
+local wage_seq_5 c.job_tenure_years i.educ_raw i.year i.occupation_code i.industry_fe
+
+gen byte wage_seq_common_lhw = wage_worker == 1 ///
+    & !missing(log_hourly_wage_trim, male, post_military, year, educ_raw, ///
+        job_tenure_years, occupation_code, industry_fe)
+gen byte wage_seq_common_mwage = wage_worker == 1 ///
+    & !missing(log_monthly_wage_trim, male, post_military, year, educ_raw, ///
+        job_tenure_years, occupation_code, industry_fe)
+
+foreach outcome in lhw mwage {
+    if "`outcome'" == "lhw" {
+        local yvar log_hourly_wage_trim
+        local common_sample wage_seq_common_lhw == 1
+    }
+    else {
+        local yvar log_monthly_wage_trim
+        local common_sample wage_seq_common_mwage == 1
+    }
+
+    forvalues s = 1/5 {
+        * Available-sample sequence: report N because controls can change sample.
+        reg `yvar' i.male##i.post_military `wage_seq_`s'' ///
+            if wage_worker == 1, vce(cluster cohort)
+        estimates store wseq_`outcome'_s`s'
+        boottest 1.male#1.post_military, ///
+            cluster(cohort) reps(9999) seed(12345) nograph
+        scalar boot_p_wseq_`outcome'_s`s' = r(p)
+        estadd scalar boot_p = boot_p_wseq_`outcome'_s`s' : wseq_`outcome'_s`s'
+
+        * Common-sample sequence: isolates changes from added controls.
+        reg `yvar' i.male##i.post_military `wage_seq_`s'' ///
+            if `common_sample', vce(cluster cohort)
+        estimates store wseq_`outcome'_c`s'
+        boottest 1.male#1.post_military, ///
+            cluster(cohort) reps(9999) seed(12345) nograph
+        scalar boot_p_wseq_`outcome'_c`s' = r(p)
+        estadd scalar boot_p = boot_p_wseq_`outcome'_c`s' : wseq_`outcome'_c`s'
+    }
+}
+
 * Continuous treatment intensity alternative
 reg employed i.male##c.service_months_saved `controls_basic', vce(cluster cohort)
 estimates store int_employed
@@ -268,7 +325,7 @@ scalar boot_p_int_lhw = r(p)
 estadd scalar boot_p = boot_p_int_lhw : int_lhw
 
 ****************************************************
-* 4A. Baseline DiD by 2015-2017 industry gender type
+* 4B. Baseline DiD by 2015-2017 industry gender type
 * Industry gender type is fixed at the industry level in 02_append.do.
 * Subgroup regressions do not include industry fixed effects.
 * The employed outcome is not estimated by current industry type because
@@ -412,7 +469,12 @@ restore
 ****************************************************
 * 5. Event-study regressions
 * Reference cohort: k=-1, birth cohort 1996, rel_shift=4
+* Inference uses cohort-clustered standard errors, matching DiD.
+* Wild-bootstrap joint pre-trend p-values test k=-5 to k=-2.
 ****************************************************
+
+postfile pretrend_results str40 outcome double wild_p_pretrend ///
+    using "$OUT/eventstudy_pretrend_pvalues.dta", replace
 
 foreach yvar in employed log_monthly_wage_trim entry_age largefirm permanent log_hourly_wage_trim {
 
@@ -442,8 +504,15 @@ foreach yvar in employed log_monthly_wage_trim entry_age largefirm permanent log
         local sample_if "if wage_worker == 1"
     }
 
-    reg `yvar' i.male##ib4.rel_shift `ctrls' `sample_if', vce(robust)
+    reg `yvar' i.male##ib4.rel_shift `ctrls' `sample_if', vce(cluster cohort)
     estimates store es_`yvar'
+
+    capture boottest 1.male#0.rel_shift 1.male#1.rel_shift ///
+        1.male#2.rel_shift 1.male#3.rel_shift, ///
+        cluster(cohort) reps(9999) seed(12345) nograph
+    if !_rc scalar pretrend_p = r(p)
+    else scalar pretrend_p = .
+    post pretrend_results ("`yvar'") (pretrend_p)
 
     * Export event-study coefficients for plotting elsewhere if desired
     tempfile coef_`yvar'
@@ -470,6 +539,13 @@ foreach yvar in employed log_monthly_wage_trim entry_age largefirm permanent log
         export delimited using "$OUT/eventstudy_`yvar'.csv", replace
     restore
 }
+
+postclose pretrend_results
+
+preserve
+    use "$OUT/eventstudy_pretrend_pvalues.dta", clear
+    export delimited using "$OUT/eventstudy_pretrend_pvalues.csv", replace
+restore
 
 ****************************************************
 * 6. Quick built-in plots from exported coefficients
@@ -498,7 +574,13 @@ foreach yvar in employed log_monthly_wage_trim entry_age largefirm permanent log
 * 6A. Event-study plots by industry gender type
 * Side-by-side graphs compare male-dominated and female-dominated industries.
 * Mixed industries are omitted from these figures.
+* Inference uses cohort-clustered standard errors, matching DiD.
+* Wild-bootstrap joint pre-trend p-values test k=-5 to k=-2.
 ****************************************************
+
+postfile pretrend_industry_results str40 outcome str12 industry_type ///
+    double wild_p_pretrend using ///
+    "$OUT/eventstudy_industry_gender_type_pretrend_pvalues.dta", replace
 
 foreach yvar in entry_age largefirm permanent log_hourly_wage_trim {
 
@@ -532,8 +614,15 @@ foreach yvar in entry_age largefirm permanent log_hourly_wage_trim {
 		if `g' == 2 local gname femaleind
 
 		reg `yvar' i.male##ib4.rel_shift `ctrls' ///
-		    if `sample_base' & industry_gender_type == `g', vce(robust)
+		    if `sample_base' & industry_gender_type == `g', vce(cluster cohort)
 		estimates store es_`ystem'_`gname'
+
+		capture boottest 1.male#0.rel_shift 1.male#1.rel_shift ///
+		    1.male#2.rel_shift 1.male#3.rel_shift, ///
+		    cluster(cohort) reps(9999) seed(12345) nograph
+		if !_rc scalar pretrend_p = r(p)
+		else scalar pretrend_p = .
+		post pretrend_industry_results ("`yvar'") ("`gname'") (pretrend_p)
 
 		tempfile coef_`ystem'_`gname'
 		postfile handle str30 outcome str12 industry_type int rel_cohort ///
@@ -609,6 +698,14 @@ foreach yvar in entry_age largefirm permanent log_hourly_wage_trim {
 	graph drop es_`ystem'_maleind es_`ystem'_femaleind
 }
 
+postclose pretrend_industry_results
+
+preserve
+    use "$OUT/eventstudy_industry_gender_type_pretrend_pvalues.dta", clear
+    export delimited using ///
+        "$OUT/eventstudy_industry_gender_type_pretrend_pvalues.csv", replace
+restore
+
 
 ****************************************************
 * 7. Export proposal table
@@ -638,6 +735,38 @@ esttab int_entry int_employed int_largefirm int_fulltimeperm int_lhw ///
     scalars("boot_p Bootstrap \$p\$-value") ///
     sfmt(%9.3f) ///
     booktabs nonumber nomtitles noobs nonotes fragment
+
+* ---- Sequential wage controls: specification-specific samples ----
+foreach outcome in lhw mwage {
+	esttab wseq_`outcome'_s1 wseq_`outcome'_s2 wseq_`outcome'_s3 ///
+	    wseq_`outcome'_s4 wseq_`outcome'_s5 ///
+	    using "$OUT/wage_sequential_controls_`outcome'.tex", replace ///
+	    keep(1.male#1.post_military) ///
+	    coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
+	    mtitles("Year FE" "+ Education" "+ Tenure" ///
+	        "+ Occupation" "+ Industry") ///
+	    se star(* 0.10 ** 0.05 *** 0.01) ///
+	    stats(N r2 boot_p, ///
+	        labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
+	        fmt(%9.0fc %9.3f %9.3f)) ///
+	    booktabs nonumber nonotes fragment
+}
+
+* ---- Sequential wage controls: fixed complete-case samples ----
+foreach outcome in lhw mwage {
+	esttab wseq_`outcome'_c1 wseq_`outcome'_c2 wseq_`outcome'_c3 ///
+	    wseq_`outcome'_c4 wseq_`outcome'_c5 ///
+	    using "$OUT/wage_sequential_controls_`outcome'_common_sample.tex", replace ///
+	    keep(1.male#1.post_military) ///
+	    coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
+	    mtitles("Year FE" "+ Education" "+ Tenure" ///
+	        "+ Occupation" "+ Industry") ///
+	    se star(* 0.10 ** 0.05 *** 0.01) ///
+	    stats(N r2 boot_p, ///
+	        labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
+	        fmt(%9.0fc %9.3f %9.3f)) ///
+	    booktabs nonumber nonotes fragment
+}
 
 * ---- Subgroup DiD by industry gender type ----
 foreach outcome in entry largefirm fulltimeperm lhw mwage {

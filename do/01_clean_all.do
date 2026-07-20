@@ -736,7 +736,7 @@ if `y'== 2016 {
         local worked_lastweek v11
 		local prev_work		 v46
         local industry_code  v27
-        local occupation_code v31
+        local occupation_code v28
         local worker_status  v29
         local firm_size      v26
         local age            v58
@@ -950,12 +950,15 @@ program define clean_one_year
 	local infile `r(infile)'
 
 	di as text "Cleaning `y' : `infile'"
-	
-	import delimited using "$RAW/`infile'", ///
-	delimiter(",") varnames(nonames) rowrange(2) clear 
 
-	* source map 불러오기
+	* Load the source map before import so the occupation column can be forced
+	* to string. This preserves the possible alphanumeric military code A.
 	quietly set_source_map `y'
+	local occupation_col = real(substr("`occupation_code'", 2, .))
+
+	import delimited using "$RAW/`infile'", ///
+	delimiter(",") varnames(nonames) rowrange(2) ///
+	stringcols(`occupation_col') clear
 	
 	*필요한 변수만 남기기 전에 source 변수 목록 만들기
 	local keep_src
@@ -979,7 +982,8 @@ program define clean_one_year
 	safe_rename "`industry_code'" industry_code_raw
 	replace industry_code_raw = trim(industry_code_raw)
 	replace industry_code_raw = "" if inlist(industry_code_raw, "0", "00")
-    safe_rename "`occupation_code'" occupation_code
+    safe_rename "`occupation_code'" occupation_code_raw
+    replace occupation_code_raw = upper(trim(occupation_code_raw))
     safe_rename "`worker_status'" worker_status_raw
     safe_rename "`firm_size'" firm_size_raw
     safe_rename "`age'" age
@@ -1002,6 +1006,91 @@ program define clean_one_year
 	
 	** 공통 변수 생성
     gen year = `y'
+
+	****************************************************
+	* Occupation harmonisation to common major groups
+	* 2001-2003: 5th revision; 2004-2012: 6th revision;
+	* 2013-2025: 8th revision.
+	*
+	* The raw string is retained. In the 5th revision, raw 0 is a valid
+	* manager code for workers but is also used as not applicable for
+	* non-workers. Raw 1/2 are combined into the later professional group.
+	* In the 6th/8th revisions, raw 0 maps to missing for everyone.
+	****************************************************
+	gen byte occupation_revision = .
+	replace occupation_revision = 5 if inrange(year, 2001, 2003)
+	replace occupation_revision = 6 if inrange(year, 2004, 2012)
+	replace occupation_revision = 8 if inrange(year, 2013, 2025)
+	label define occupation_revision_lbl ///
+	    5 "KSCO 5th" 6 "KSCO 6th" 8 "KSCO 8th", replace
+	label values occupation_revision occupation_revision_lbl
+	label variable occupation_revision ///
+	    "KSCO revision of occupation_code_raw"
+	label variable occupation_code_raw "Raw occupation major-group code"
+
+	* All observed raw codes must be a one-digit major group, the explicit
+	* non-applicable code 00, A/A1, or blank. Leading zeros are preserved.
+	assert regexm(occupation_code_raw, "^([0-9]|00|A|A1)?$")
+
+	gen byte occupation_code = .
+
+	* Fifth revision: managers were 0; professionals and associate
+	* professionals/technicians were separate groups 1 and 2.
+	replace occupation_code = 1 if occupation_revision == 5 ///
+	    & occupation_code_raw == "0" ///
+	    & inrange(worker_status_raw, 1, 6)
+	replace occupation_code = 2 if occupation_revision == 5 ///
+	    & inlist(occupation_code_raw, "1", "2")
+	forvalues occ = 3/9 {
+		replace occupation_code = `occ' if occupation_revision == 5 ///
+		    & occupation_code_raw == "`occ'"
+	}
+
+	* Sixth and eighth revisions already share common major groups 1-9.
+	forvalues occ = 1/9 {
+		replace occupation_code = `occ' ///
+		    if inlist(occupation_revision, 6, 8) ///
+		    & occupation_code_raw == "`occ'"
+	}
+
+	* Military is retained defensively even though no A/A1 observations are
+	* present in the 2001-2025 raw files for this survey.
+	replace occupation_code = 10 if inlist(occupation_code_raw, "A", "A1")
+
+	label define occupation_code_lbl ///
+	    1 "Managers" ///
+	    2 "Professionals and related workers" ///
+	    3 "Clerical support workers" ///
+	    4 "Service workers" ///
+	    5 "Sales workers" ///
+	    6 "Skilled agricultural, forestry and fishery workers" ///
+	    7 "Craft and related trades workers" ///
+	    8 "Plant and machine operators and assemblers" ///
+	    9 "Elementary occupations" ///
+	    10 "Military", replace
+	label values occupation_code occupation_code_lbl
+	label variable occupation_code "Harmonised occupation major group"
+	decode occupation_code, gen(occupation_name)
+	label variable occupation_name "Harmonised occupation major-group name"
+
+	* Mapping completeness and revision-specific zero-code safeguards.
+	assert occupation_code == 1 if occupation_revision == 5 ///
+	    & occupation_code_raw == "0" ///
+	    & inrange(worker_status_raw, 1, 6)
+	assert missing(occupation_code) if occupation_revision == 5 ///
+	    & occupation_code_raw == "0" ///
+	    & !inrange(worker_status_raw, 1, 6)
+	assert missing(occupation_code) if occupation_revision == 5 ///
+	    & inlist(occupation_code_raw, "", "00")
+	assert occupation_code == 2 if occupation_revision == 5 ///
+	    & inlist(occupation_code_raw, "1", "2")
+	assert missing(occupation_code) if inlist(occupation_revision, 6, 8) ///
+	    & inlist(occupation_code_raw, "", "0", "00")
+	assert !missing(occupation_code) if occupation_code_raw != "" ///
+	    & !inlist(occupation_code_raw, "0", "00")
+	assert !missing(occupation_code) if occupation_revision == 5 ///
+	    & occupation_code_raw == "0" ///
+	    & inrange(worker_status_raw, 1, 6)
 
 	* KSIC revision used by the selected source industry variable
 	gen byte industry_revision = .
@@ -1201,7 +1290,8 @@ label variable permanent "Permanent employee: regular worker with no fixed contr
     order year survey_ym male gender_raw birth_year age educ_raw grad_year ///
           marital_raw worker_status_raw wage_worker continued_work_raw ///
           can_continue industry_revision industry_code_raw ///
-          industry_code industry_name occupation_code ///
+          industry_code industry_name occupation_revision ///
+          occupation_code_raw occupation_code occupation_name ///
           firm_size_raw largefirm monthly_wage hours_week hourly_wage ///
           log_hourly_wage pension healthins employins weight popwt, first
 
@@ -1229,5 +1319,13 @@ preserve
 	forvalues y = 2001/2025 {
 		use "$CLEAN/clean_`y'.dta", clear
 		assert missing(industry_code) == missing(industry_code_raw)
+		assert occupation_revision == 5 if inrange(year, 2001, 2003)
+		assert occupation_revision == 6 if inrange(year, 2004, 2012)
+		assert occupation_revision == 8 if inrange(year, 2013, 2025)
+		assert !missing(occupation_code) if occupation_code_raw != "" ///
+		    & !inlist(occupation_code_raw, "0", "00")
+		assert !missing(occupation_code) if occupation_revision == 5 ///
+		    & occupation_code_raw == "0" ///
+		    & inrange(worker_status_raw, 1, 6)
 	}
 restore
