@@ -35,6 +35,14 @@ else {
 capture mkdir "$OUT"
 display as text "Output folder: $OUT"
 
+* Keep a timestamped text log so warnings, omitted terms, cluster counts,
+* and regression sample sizes can be audited without overwriting prior runs.
+local analysis_run_date = subinstr("`c(current_date)'", " ", "", .)
+local analysis_run_time = subinstr("`c(current_time)'", ":", "", .)
+capture log close analysis03
+log using "$OUT/03_analysis_`analysis_run_date'_`analysis_run_time'.log", ///
+    text name(analysis03)
+
 use "$CLEAN/mdis_master_2001_2025.dta", clear
 
 ****************************************************
@@ -169,7 +177,9 @@ display as text "controls_sub_job: `controls_sub_job'"
 display as text "controls_sub_wage: `controls_sub_wage'"
 
 ********************************************************
-* 4. Baseline DiD regressions + Wild Cluster Bootstrap
+* 4. Labour-market entry DiD + Wild Cluster Bootstrap
+* Job-quality outcomes are analysed in 05_build_qoe_outcomes.do and
+* 06_analysis_qoe.do; this file focuses on employment and entry timing.
 ********************************************************
 
 estimates clear
@@ -182,110 +192,13 @@ boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
 scalar boot_p_did_employed = r(p)
 estadd scalar boot_p = boot_p_did_employed : did_employed
 
-*---- monthly_wage ----
-reg log_monthly_wage_trim i.male##i.post_military `controls_rich_wage' if wage_worker == 1, vce(cluster cohort)
-estimates store did_mwage
-boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_did_mwage = r(p)
-estadd scalar boot_p = boot_p_did_mwage : did_mwage
-
-*---- entry_age ----
-reg entry_age i.male##i.post_military `controls_basic' if wage_worker== 1, vce(cluster cohort)
+*---- entry_age: timing among wage workers ----
+reg entry_age i.male##i.post_military `controls_basic' ///
+    if wage_worker == 1, vce(cluster cohort)
 estimates store did_entry
 boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
 scalar boot_p_did_entry = r(p)
 estadd scalar boot_p = boot_p_did_entry : did_entry
-
-*---- largefirm ----
-reg largefirm i.male##i.post_military `controls_rich_job' if wage_worker == 1, vce(cluster cohort)
-estimates store did_largefirm
-boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_did_largefirm = r(p)
-estadd scalar boot_p = boot_p_did_largefirm : did_largefirm
-
-*---- permanent ----
-reg permanent i.male##i.post_military `controls_rich_job' if wage_worker == 1, vce(cluster cohort)
-estimates store did_fulltimeperm
-boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_did_fulltimeperm = r(p)
-estadd scalar boot_p = boot_p_did_fulltimeperm : did_fulltimeperm
-
-*---- log_hourly_wage ----
-reg log_hourly_wage_trim i.male##i.post_military `controls_rich_wage' if wage_worker == 1, vce(cluster cohort)
-estimates store did_lhw
-boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_did_lhw = r(p)
-estadd scalar boot_p = boot_p_did_lhw : did_lhw
-
-* Wage with entry-age mediation/control
-reg log_hourly_wage_trim i.male##i.post_military c.entry_age `controls_rich_wage' if wage_worker == 1, vce(cluster cohort)
-estimates store did_lhw_entry
-boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_did_lhw_entry = r(p)
-estadd scalar boot_p = boot_p_did_lhw_entry : did_lhw_entry
-
-reg monthly_wage i.male##i.post_military c.entry_age `controls_rich_wage' if wage_worker == 1, vce(cluster cohort)
-estimates store did_mwage_entry
-boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_did_mwage_entry = r(p)
-estadd scalar boot_p = boot_p_did_mwage_entry : did_mwage_entry
-
-****************************************************
-* 4A. Sequential wage controls: total versus conditional effects
-*
-* These specifications retain the original wage regressions above and
-* diagnose how the Male x Post coefficient changes as potentially
-* post-treatment job characteristics are added. Education is introduced
-* first, followed by current-job tenure, occupation, and current industry.
-*
-* The primary sequence uses each specification's available sample. A second
-* common-sample sequence holds observations fixed across all five columns so
-* coefficient changes are not mechanically driven by missing controls.
-****************************************************
-
-local wage_seq_1 i.year
-local wage_seq_2 i.educ_raw i.year
-local wage_seq_3 c.job_tenure_years i.educ_raw i.year
-local wage_seq_4 c.job_tenure_years i.educ_raw i.year i.occupation_code
-local wage_seq_5 c.job_tenure_years i.educ_raw i.year i.occupation_code i.industry_fe
-
-gen byte wage_seq_common_lhw = wage_worker == 1 ///
-    & !missing(log_hourly_wage_trim, male, post_military, year, educ_raw, ///
-        job_tenure_years, occupation_code, industry_fe)
-gen byte wage_seq_common_mwage = wage_worker == 1 ///
-    & !missing(log_monthly_wage_trim, male, post_military, year, educ_raw, ///
-        job_tenure_years, occupation_code, industry_fe)
-
-foreach outcome in lhw mwage {
-    if "`outcome'" == "lhw" {
-        local yvar log_hourly_wage_trim
-        local common_sample wage_seq_common_lhw == 1
-    }
-    else {
-        local yvar log_monthly_wage_trim
-        local common_sample wage_seq_common_mwage == 1
-    }
-
-    forvalues s = 1/5 {
-        * Available-sample sequence: report N because controls can change sample.
-        reg `yvar' i.male##i.post_military `wage_seq_`s'' ///
-            if wage_worker == 1, vce(cluster cohort)
-        estimates store wseq_`outcome'_s`s'
-        boottest 1.male#1.post_military, ///
-            cluster(cohort) reps(9999) seed(12345) nograph
-        scalar boot_p_wseq_`outcome'_s`s' = r(p)
-        estadd scalar boot_p = boot_p_wseq_`outcome'_s`s' : wseq_`outcome'_s`s'
-
-        * Common-sample sequence: isolates changes from added controls.
-        reg `yvar' i.male##i.post_military `wage_seq_`s'' ///
-            if `common_sample', vce(cluster cohort)
-        estimates store wseq_`outcome'_c`s'
-        boottest 1.male#1.post_military, ///
-            cluster(cohort) reps(9999) seed(12345) nograph
-        scalar boot_p_wseq_`outcome'_c`s' = r(p)
-        estadd scalar boot_p = boot_p_wseq_`outcome'_c`s' : wseq_`outcome'_c`s'
-    }
-}
 
 * Continuous treatment intensity alternative
 reg employed i.male##c.service_months_saved `controls_basic', vce(cluster cohort)
@@ -294,167 +207,26 @@ boottest 1.male#c.service_months_saved, cluster(cohort) reps(9999) seed(12345) n
 scalar boot_p_int_employed = r(p)
 estadd scalar boot_p = boot_p_int_employed : int_employed
 
-reg log_monthly_wage_trim i.male##c.service_months_saved `controls_rich_wage' if wage_worker == 1, vce(cluster cohort)
-estimates store int_mwage
-boottest 1.male#c.service_months_saved, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_int_mwage = r(p)
-estadd scalar boot_p = boot_p_int_mwage : int_mwage
-
-reg entry_age i.male##c.service_months_saved `controls_basic' if employed == 1, vce(cluster cohort)
+reg entry_age i.male##c.service_months_saved `controls_basic' ///
+    if wage_worker == 1, vce(cluster cohort)
 estimates store int_entry
 boottest 1.male#c.service_months_saved, cluster(cohort) reps(9999) seed(12345) nograph
 scalar boot_p_int_entry = r(p)
 estadd scalar boot_p = boot_p_int_entry : int_entry
-
-reg largefirm i.male##c.service_months_saved `controls_rich_job' if employed == 1, vce(cluster cohort)
-estimates store int_largefirm
-boottest 1.male#c.service_months_saved, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_int_largefirm = r(p)
-estadd scalar boot_p = boot_p_int_largefirm : int_largefirm
-
-reg permanent i.male##c.service_months_saved `controls_rich_job' if wage_worker == 1, vce(cluster cohort)
-estimates store int_fulltimeperm
-boottest 1.male#c.service_months_saved, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_int_fulltimeperm = r(p)
-estadd scalar boot_p = boot_p_int_fulltimeperm : int_fulltimeperm
-
-reg log_hourly_wage_trim i.male##c.service_months_saved `controls_rich_wage' if wage_worker == 1, vce(cluster cohort)
-estimates store int_lhw
-boottest 1.male#c.service_months_saved, cluster(cohort) reps(9999) seed(12345) nograph
-scalar boot_p_int_lhw = r(p)
-estadd scalar boot_p = boot_p_int_lhw : int_lhw
-
-****************************************************
-* 4B. Baseline DiD by 2015-2017 industry gender type
-* Industry gender type is fixed at the industry level in 02_append.do.
-* Subgroup regressions do not include industry fixed effects.
-* The employed outcome is not estimated by current industry type because
-* industry is observed for jobs/workers; splitting by current industry would
-* condition on employment.
-****************************************************
-
-tab industry_gender_type, missing
-
-foreach g in 1 2 3 {
-	if `g' == 1 local gname maleind
-	if `g' == 2 local gname femaleind
-	if `g' == 3 local gname mixedind
-
-	display as text "Subgroup DiD: industry_gender_type == `g' (`gname')"
-
-	reg log_monthly_wage_trim i.male##i.post_military `controls_sub_wage' ///
-	    if wage_worker == 1 & industry_gender_type == `g', vce(cluster cohort)
-	estimates store did_mwage_`gname'
-	capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-	if !_rc scalar boot_p_sub = r(p)
-	else scalar boot_p_sub = .
-	estadd scalar boot_p = boot_p_sub : did_mwage_`gname'
-
-	reg entry_age i.male##i.post_military `controls_basic' ///
-	    if wage_worker == 1 & industry_gender_type == `g', vce(cluster cohort)
-	estimates store did_entry_`gname'
-	capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-	if !_rc scalar boot_p_sub = r(p)
-	else scalar boot_p_sub = .
-	estadd scalar boot_p = boot_p_sub : did_entry_`gname'
-
-	reg largefirm i.male##i.post_military `controls_sub_job' ///
-	    if wage_worker == 1 & industry_gender_type == `g', vce(cluster cohort)
-	estimates store did_largefirm_`gname'
-	capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-	if !_rc scalar boot_p_sub = r(p)
-	else scalar boot_p_sub = .
-	estadd scalar boot_p = boot_p_sub : did_largefirm_`gname'
-
-	reg permanent i.male##i.post_military `controls_sub_job' ///
-	    if wage_worker == 1 & industry_gender_type == `g', vce(cluster cohort)
-	estimates store did_fulltimeperm_`gname'
-	capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-	if !_rc scalar boot_p_sub = r(p)
-	else scalar boot_p_sub = .
-	estadd scalar boot_p = boot_p_sub : did_fulltimeperm_`gname'
-
-	reg log_hourly_wage_trim i.male##i.post_military `controls_sub_wage' ///
-	    if wage_worker == 1 & industry_gender_type == `g', vce(cluster cohort)
-	estimates store did_lhw_`gname'
-	capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-	if !_rc scalar boot_p_sub = r(p)
-	else scalar boot_p_sub = .
-	estadd scalar boot_p = boot_p_sub : did_lhw_`gname'
-}
-
-****************************************************
-* 4B. Comparable main specification table
-* Full sample and industry-gender subgroups use the same controls.
-* No industry fixed effects are included in this section.
-* The employed outcome is excluded because industry type is assigned
-* from observed current industry.
-****************************************************
-
-foreach yvar in entry_age largefirm permanent log_hourly_wage_trim log_monthly_wage_trim {
-
-	if "`yvar'" == "entry_age" {
-		local ctrls `controls_basic'
-		local sample_base "wage_worker == 1"
-		local ystem entry
-	}
-	else if "`yvar'" == "largefirm" {
-		local ctrls `controls_sub_job'
-		local sample_base "wage_worker == 1"
-		local ystem large
-	}
-	else if "`yvar'" == "permanent" {
-		local ctrls `controls_sub_job'
-		local sample_base "wage_worker == 1"
-		local ystem perm
-	}
-	else if "`yvar'" == "log_hourly_wage_trim" {
-		local ctrls `controls_sub_wage'
-		local sample_base "wage_worker == 1"
-		local ystem lhw
-	}
-	else {
-		local ctrls `controls_sub_wage'
-		local sample_base "wage_worker == 1"
-		local ystem mwage
-	}
-
-	reg `yvar' i.male##i.post_military `ctrls' ///
-	    if `sample_base' & !missing(industry_gender_type), vce(cluster cohort)
-	estimates store main_`ystem'_full
-	capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-	if !_rc scalar boot_p_main = r(p)
-	else scalar boot_p_main = .
-	estadd scalar boot_p = boot_p_main : main_`ystem'_full
-
-	foreach g in 1 2 3 {
-		if `g' == 1 local gname maleind
-		if `g' == 2 local gname femaleind
-		if `g' == 3 local gname mixedind
-
-		reg `yvar' i.male##i.post_military `ctrls' ///
-		    if `sample_base' & industry_gender_type == `g', vce(cluster cohort)
-		estimates store main_`ystem'_`gname'
-		capture boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
-		if !_rc scalar boot_p_main = r(p)
-		else scalar boot_p_main = .
-		estadd scalar boot_p = boot_p_main : main_`ystem'_`gname'
-	}
-}
 
 ****************************************************
 * Bootstrap p-values print & save
 ****************************************************
 
 * print
-foreach outcome in did_employed did_mwage did_entry did_largefirm did_fulltimeperm did_lhw did_lhw_entry did_mwage_entry int_employed int_entry int_fulltimeperm int_largefirm int_lhw int_mwage {
+foreach outcome in did_employed did_entry int_employed int_entry {
     display "`outcome': boot p = " boot_p_`outcome'
 }
 
 * CSV saving
 postfile boot_results str30 spec double boot_p using "$OUT/bootstrap_pvalues.dta", replace
 
-foreach outcome in did_employed did_mwage did_entry did_largefirm did_fulltimeperm did_lhw did_lhw_entry did_mwage_entry {
+foreach outcome in did_employed did_entry int_employed int_entry {
     post boot_results ("`outcome'") (boot_p_`outcome')
 }
 
@@ -476,31 +248,15 @@ restore
 postfile pretrend_results str40 outcome double wild_p_pretrend ///
     using "$OUT/eventstudy_pretrend_pvalues.dta", replace
 
-foreach yvar in employed log_monthly_wage_trim entry_age largefirm permanent log_hourly_wage_trim {
+foreach yvar in employed entry_age {
 
     local sample_if ""
 
     if "`yvar'" == "employed" {
         local ctrls `controls_basic'
     }
-	else if "`yvar'" == "log_monthly_wage_trim" {
-		local ctrls `controls_rich_wage'
-		local sample_if "if wage_worker == 1"
-	}
     else if "`yvar'" == "entry_age" {
         local ctrls `controls_basic'
-        local sample_if "if wage_worker == 1"
-    }
-	else if "`yvar'" == "largefirm" {
-        local ctrls `controls_rich_job'
-        local sample_if "if wage_worker == 1"
-    }
-    else if "`yvar'" == "permanent" {
-        local ctrls `controls_rich_job'
-        local sample_if "if wage_worker == 1"
-    }
-    else {
-        local ctrls `controls_rich_wage'
         local sample_if "if wage_worker == 1"
     }
 
@@ -551,7 +307,7 @@ restore
 * 6. Quick built-in plots from exported coefficients
 ****************************************************
 
-foreach yvar in employed log_monthly_wage_trim entry_age largefirm permanent log_hourly_wage_trim {
+foreach yvar in employed entry_age {
     preserve
         import delimited using "$OUT/eventstudy_`yvar'.csv", clear
         sort rel_cohort
@@ -571,143 +327,6 @@ foreach yvar in employed log_monthly_wage_trim entry_age largefirm permanent log
 }
 
 ****************************************************
-* 6A. Event-study plots by industry gender type
-* Side-by-side graphs compare male-dominated and female-dominated industries.
-* Mixed industries are omitted from these figures.
-* Inference uses cohort-clustered standard errors, matching DiD.
-* Wild-bootstrap joint pre-trend p-values test k=-5 to k=-2.
-****************************************************
-
-postfile pretrend_industry_results str40 outcome str12 industry_type ///
-    double wild_p_pretrend using ///
-    "$OUT/eventstudy_industry_gender_type_pretrend_pvalues.dta", replace
-
-foreach yvar in entry_age largefirm permanent log_hourly_wage_trim {
-
-	if "`yvar'" == "entry_age" {
-		local ctrls `controls_basic'
-		local sample_base "wage_worker == 1"
-		local ytitle "Entry age"
-		local ystem entry
-	}
-	else if "`yvar'" == "largefirm" {
-		local ctrls `controls_sub_job'
-		local sample_base "wage_worker == 1"
-		local ytitle "Large firm"
-		local ystem large
-	}
-	else if "`yvar'" == "permanent" {
-		local ctrls `controls_sub_job'
-		local sample_base "wage_worker == 1"
-		local ytitle "Permanent"
-		local ystem perm
-	}
-	else {
-		local ctrls `controls_sub_wage'
-		local sample_base "wage_worker == 1"
-		local ytitle "Log hourly wage"
-		local ystem lhw
-	}
-
-	foreach g in 1 2 {
-		if `g' == 1 local gname maleind
-		if `g' == 2 local gname femaleind
-
-		reg `yvar' i.male##ib4.rel_shift `ctrls' ///
-		    if `sample_base' & industry_gender_type == `g', vce(cluster cohort)
-		estimates store es_`ystem'_`gname'
-
-		capture boottest 1.male#0.rel_shift 1.male#1.rel_shift ///
-		    1.male#2.rel_shift 1.male#3.rel_shift, ///
-		    cluster(cohort) reps(9999) seed(12345) nograph
-		if !_rc scalar pretrend_p = r(p)
-		else scalar pretrend_p = .
-		post pretrend_industry_results ("`yvar'") ("`gname'") (pretrend_p)
-
-		tempfile coef_`ystem'_`gname'
-		postfile handle str30 outcome str12 industry_type int rel_cohort ///
-		    double beta se lb ub using "`coef_`ystem'_`gname''", replace
-
-		forvalues k = -5/5 {
-			local s = `k' + 5
-			if `k' == -1 {
-				post handle ("`yvar'") ("`gname'") (`k') (0) (0) (0) (0)
-			}
-			else {
-				capture lincom 1.male#`s'.rel_shift
-				if !_rc {
-					post handle ("`yvar'") ("`gname'") (`k') ///
-					    (r(estimate)) (r(se)) ///
-					    (r(estimate) - 1.96*r(se)) ///
-					    (r(estimate) + 1.96*r(se))
-				}
-			}
-		}
-		postclose handle
-
-		preserve
-			quietly use "`coef_`ystem'_`gname''", clear
-			export delimited using "$OUT/eventstudy_`ystem'_`gname'.csv", replace
-		restore
-	}
-
-	preserve
-		quietly use "`coef_`ystem'_maleind'", clear
-		append using "`coef_`ystem'_femaleind'"
-		summarize lb, meanonly
-		local ymin = floor(r(min) * 10) / 10
-		summarize ub, meanonly
-		local ymax = ceil(r(max) * 10) / 10
-		if `ymin' > 0 local ymin = 0
-		if `ymax' < 0 local ymax = 0
-		local ystep = (`ymax' - `ymin') / 4
-		local ystep = ceil(`ystep' * 100) / 100
-	restore
-
-	foreach g in 1 2 {
-		if `g' == 1 local gname maleind
-		if `g' == 2 local gname femaleind
-		preserve
-			quietly use "`coef_`ystem'_`gname''", clear
-			sort rel_cohort
-
-			if "`gname'" == "maleind" local gtitle "Male-dominated industries"
-			if "`gname'" == "femaleind" local gtitle "Female-dominated industries"
-
-			twoway ///
-			    (rcap lb ub rel_cohort, lcolor(gs8)) ///
-			    (connected beta rel_cohort, msymbol(O) msize(medium) ///
-			        lcolor(navy) mcolor(navy)), ///
-			    xline(-0.5, lpattern(dash) lcolor(red)) ///
-			    yline(0, lpattern(dash) lcolor(gs10)) ///
-			    xtitle("Relative birth cohort (k)") ///
-			    ytitle("Male × cohort coefficient") ///
-			    yscale(range(`ymin' `ymax')) ///
-			    ylabel(`ymin'(`ystep')`ymax') ///
-			    title("`gtitle'") ///
-			    legend(off) ///
-			    name(es_`ystem'_`gname', replace)
-		restore
-	}
-
-	graph combine es_`ystem'_maleind es_`ystem'_femaleind, ///
-	    cols(2) ///
-	    title("Event study by industry gender type: `ytitle'") ///
-	    note("Reference cohort: k = -1. Controls exclude industry fixed effects.")
-	graph export "$OUT/eventstudy_`ystem'_gender_type.png", replace
-	graph drop es_`ystem'_maleind es_`ystem'_femaleind
-}
-
-postclose pretrend_industry_results
-
-preserve
-    use "$OUT/eventstudy_industry_gender_type_pretrend_pvalues.dta", clear
-    export delimited using ///
-        "$OUT/eventstudy_industry_gender_type_pretrend_pvalues.csv", replace
-restore
-
-
-****************************************************
 * 7. Export proposal table
 ****************************************************
 
@@ -717,117 +336,33 @@ capture which esttab
 if !_rc {
 
 * ---- Panel A: Baseline DiD ----
-esttab did_entry did_employed did_largefirm did_fulltimeperm did_lhw ///
+esttab did_entry did_employed ///
     using "$OUT/panel_a_did.tex", replace ///
     keep(1.male#1.post_military) ///
     coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
-    se star(* 0.10 ** 0.05 *** 0.01) ///
-    scalars("boot_p Bootstrap \$p\$-value") ///
-    sfmt(%9.3f) ///
-    booktabs nonumber nomtitles noobs nonotes fragment
+    mtitles("Entry age" "Employed") ///
+    se nostar ///
+    stats(N boot_p, labels("Observations" "Wild-bootstrap \$p\$-value") ///
+        fmt(%9.0fc %9.3f)) ///
+    addnotes("Standard errors clustered by birth cohort (11 clusters)." ///
+        "Inference uses wild-cluster-bootstrap p-values; 0.000 denotes p<0.001.") ///
+    booktabs nonumber fragment
 
 * ---- Panel B ----
-esttab int_entry int_employed int_largefirm int_fulltimeperm int_lhw ///
+esttab int_entry int_employed ///
     using "$OUT/panel_b_intensity.tex", replace ///
     keep(1.male#c.service_months_saved) ///
     coeflabels(1.male#c.service_months_saved "Months saved \$\times\$ Male") ///
-    se star(* 0.10 ** 0.05 *** 0.01) ///
-    scalars("boot_p Bootstrap \$p\$-value") ///
-    sfmt(%9.3f) ///
-    booktabs nonumber nomtitles noobs nonotes fragment
+    mtitles("Entry age" "Employed") ///
+    se nostar ///
+    stats(N boot_p, labels("Observations" "Wild-bootstrap \$p\$-value") ///
+        fmt(%9.0fc %9.3f)) ///
+    addnotes("Standard errors clustered by birth cohort (11 clusters)." ///
+        "Inference uses wild-cluster-bootstrap p-values; 0.000 denotes p<0.001.") ///
+    booktabs nonumber fragment
 
-* ---- Sequential wage controls: specification-specific samples ----
-foreach outcome in lhw mwage {
-	esttab wseq_`outcome'_s1 wseq_`outcome'_s2 wseq_`outcome'_s3 ///
-	    wseq_`outcome'_s4 wseq_`outcome'_s5 ///
-	    using "$OUT/wage_sequential_controls_`outcome'.tex", replace ///
-	    keep(1.male#1.post_military) ///
-	    coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
-	    mtitles("Year FE" "+ Education" "+ Tenure" ///
-	        "+ Occupation" "+ Industry") ///
-	    se star(* 0.10 ** 0.05 *** 0.01) ///
-	    stats(N r2 boot_p, ///
-	        labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
-	        fmt(%9.0fc %9.3f %9.3f)) ///
-	    booktabs nonumber nonotes fragment
 }
-
-* ---- Sequential wage controls: fixed complete-case samples ----
-foreach outcome in lhw mwage {
-	esttab wseq_`outcome'_c1 wseq_`outcome'_c2 wseq_`outcome'_c3 ///
-	    wseq_`outcome'_c4 wseq_`outcome'_c5 ///
-	    using "$OUT/wage_sequential_controls_`outcome'_common_sample.tex", replace ///
-	    keep(1.male#1.post_military) ///
-	    coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
-	    mtitles("Year FE" "+ Education" "+ Tenure" ///
-	        "+ Occupation" "+ Industry") ///
-	    se star(* 0.10 ** 0.05 *** 0.01) ///
-	    stats(N r2 boot_p, ///
-	        labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
-	        fmt(%9.0fc %9.3f %9.3f)) ///
-	    booktabs nonumber nonotes fragment
-}
-
-* ---- Subgroup DiD by industry gender type ----
-foreach outcome in entry largefirm fulltimeperm lhw mwage {
-	esttab did_`outcome'_maleind did_`outcome'_femaleind did_`outcome'_mixedind ///
-	    using "$OUT/subgroup_did_`outcome'.tex", replace ///
-	    keep(1.male#1.post_military) ///
-	    coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
-	    mtitles("Male-dominated" "Female-dominated" "Mixed") ///
-	    se star(* 0.10 ** 0.05 *** 0.01) ///
-	    scalars("boot_p Bootstrap \$p\$-value") ///
-	    sfmt(%9.3f) ///
-	    booktabs nonumber noobs nonotes fragment
-}
-
-* ---- Combined subgroup DiD table: compare industry gender types across outcomes ----
-esttab did_entry_maleind did_entry_femaleind did_entry_mixedind ///
-    did_largefirm_maleind did_largefirm_femaleind did_largefirm_mixedind ///
-    did_fulltimeperm_maleind did_fulltimeperm_femaleind did_fulltimeperm_mixedind ///
-    did_lhw_maleind did_lhw_femaleind did_lhw_mixedind ///
-    did_mwage_maleind did_mwage_femaleind did_mwage_mixedind ///
-    using "$OUT/subgroup_did_combined.tex", replace ///
-    keep(1.male#1.post_military) ///
-    coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
-    mtitles("Male-dom." "Female-dom." "Mixed" ///
-        "Male-dom." "Female-dom." "Mixed" ///
-        "Male-dom." "Female-dom." "Mixed" ///
-        "Male-dom." "Female-dom." "Mixed" ///
-        "Male-dom." "Female-dom." "Mixed") ///
-	    mgroups("Entry age" "Large firm" "Permanent" ///
-	        "Log hourly wage" "Log monthly wage", pattern(1 0 0 1 0 0 1 0 0 1 0 0 1 0 0) ///
-	        prefix("\multicolumn{@span}{c}{") suffix("}") span) ///
-    se star(* 0.10 ** 0.05 *** 0.01) ///
-    scalars("boot_p Bootstrap \$p\$-value") ///
-    sfmt(%9.3f) ///
-    booktabs nonumber noobs nonotes fragment
-
-* ---- Main specification table: comparable full sample and subgroups ----
-esttab main_entry_full main_entry_maleind main_entry_femaleind main_entry_mixedind ///
-    main_large_full main_large_maleind main_large_femaleind main_large_mixedind ///
-    main_perm_full main_perm_maleind main_perm_femaleind main_perm_mixedind ///
-    main_lhw_full main_lhw_maleind main_lhw_femaleind main_lhw_mixedind ///
-    main_mwage_full main_mwage_maleind main_mwage_femaleind main_mwage_mixedind ///
-    using "$OUT/main_did_by_industry_gender_type.tex", replace ///
-    keep(1.male#1.post_military) ///
-    coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
-    mtitles("Full" "Male-dom." "Female-dom." "Mixed" ///
-        "Full" "Male-dom." "Female-dom." "Mixed" ///
-        "Full" "Male-dom." "Female-dom." "Mixed" ///
-        "Full" "Male-dom." "Female-dom." "Mixed" ///
-        "Full" "Male-dom." "Female-dom." "Mixed") ///
-	    mgroups("Entry age" "Large firm" "Permanent" ///
-	        "Log hourly wage" "Log monthly wage", ///
-	        pattern(1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0) ///
-	        prefix("\multicolumn{@span}{c}{") suffix("}") span) ///
-    se star(* 0.10 ** 0.05 *** 0.01) ///
-    stats(N r2 boot_p, ///
-        labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
-        fmt(%9.0fc %9.3f %9.3f)) ///
-    booktabs nonumber nonotes fragment
-}
-
-****************************************************
 * End
 ****************************************************
+
+log close analysis03

@@ -1,9 +1,0 @@
-outcome,industry_type,wild_p_pretrend
-entry_age,maleind,.2060546875
-entry_age,femaleind,.7578125
-largefirm,maleind,.3759765625
-largefirm,femaleind,.623046875
-permanent,maleind,.5009765625
-permanent,femaleind,.58984375
-log_hourly_wage_trim,maleind,.5244140625
-log_hourly_wage_trim,femaleind,.5166015625

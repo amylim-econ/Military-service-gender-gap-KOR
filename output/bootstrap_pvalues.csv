@@ -1,9 +1,5 @@
 spec,boot_p
 did_employed,.0078125
-did_mwage,.8037109375
 did_entry,0
-did_largefirm,.00390625
-did_fulltimeperm,.6396484375
-did_lhw,.005859375
-did_lhw_entry,.0087890625
-did_mwage_entry,.0341796875
+int_employed,.029296875
+int_entry,.0009765625
