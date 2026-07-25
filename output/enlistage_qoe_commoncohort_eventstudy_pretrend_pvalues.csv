@@ -1,0 +1,13 @@
+enlist_age,outcome,wild_p_pretrend
+19,qoe_conditions_deprivation,.2734375
+20,qoe_conditions_deprivation,.3095703125
+21,qoe_conditions_deprivation,.5263671875
+19,qoe_deprivation_score50,.349609375
+20,qoe_deprivation_score50,.2734375
+21,qoe_deprivation_score50,.4462890625
+19,qoe_income_deprivation50,.5595703125
+20,qoe_income_deprivation50,.5751953125
+21,qoe_income_deprivation50,.4033203125
+19,qoe_stability_deprivation,.5439453125
+20,qoe_stability_deprivation,.4794921875
+21,qoe_stability_deprivation,.3515625
