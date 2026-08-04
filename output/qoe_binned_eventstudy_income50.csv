@@ -1,6 +1,6 @@
-outcome,event_bin,bin_label,beta,cluster_se,wild_p
-qoe_income_deprivation50,0,"Early pre (k=-5,-4)",.0164873866101797,.002701262,.18945313
-qoe_income_deprivation50,1,"Near pre (k=-3,-2)",-.0024566157134651,.0082804887,.52441406
-qoe_income_deprivation50,2,Reference (k=-1),0,0,
-qoe_income_deprivation50,3,"Partial reduction (k=0,1,2)",-.0354906609904258,.016860899,.38867188
-qoe_income_deprivation50,4,"Full reduction (k=3,4,5)",-.0557451420781716,.018030047,.11523438
+outcome,event_bin,bin_label,beta,cluster_se,wild_p,wild_ci_lb,wild_ci_ub
+qoe_income_deprivation50,0,"Early pre (k=-5,-4)",.0164873866101902,.002701262,.18945313,-.10417524,4.0060935
+qoe_income_deprivation50,1,"Near pre (k=-3,-2)",-.002456615713458,.0082804887,.52441406,-6.9252424,.93173987
+qoe_income_deprivation50,2,Reference (k=-1),0,0,,,
+qoe_income_deprivation50,3,"Partial reduction (k=0,1,2)",-.0354906609904182,.016860899,.38867188,-.19356109,.038746215
+qoe_income_deprivation50,4,"Full reduction (k=3,4,5)",-.0557451420781645,.018030047,.11523438,-.12166067,.0061390074

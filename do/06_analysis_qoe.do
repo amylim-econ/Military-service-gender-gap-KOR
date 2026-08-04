@@ -514,12 +514,18 @@ foreach yvar of local qoe_event {
 * 12. Binned event study
 * Bins follow policy exposure: two pre-reform bins, the k=-1 base,
 * partial reduction (k=0 to 2), and full reduction (k=3 to 5).
-* Graphs show point estimates only. Clustered SEs and wild-bootstrap
-* p-values are saved in CSVs; conventional CIs are intentionally omitted.
+* Graphs show point estimates labelled with wild-bootstrap p-values.
+* Clustered SEs, wild-bootstrap p-values, and confidence-set bounds
+* are saved in CSVs; confidence-set bounds are retained for diagnostics
+* but omitted from plots because some inverted sets are extremely wide.
 ****************************************************
 
 postfile binned_pretrend_results str40 outcome double wild_p_pretrend ///
     using "$OUT/qoe_binned_eventstudy_pretrend_pvalues.dta", replace
+
+* Rows contain coefficient, cohort-clustered SE, and wild-bootstrap p-value
+* for each non-reference bin, followed by the joint pre-trend p-value.
+matrix qoe_binned_table = J(13, 4, .)
 
 local i = 1
 foreach yvar of local qoe_event {
@@ -543,15 +549,17 @@ foreach yvar of local qoe_event {
     }
     scalar binned_pretrend_p = r(p)
     post binned_pretrend_results ("`yvar'") (binned_pretrend_p)
+    matrix qoe_binned_table[13, `i'] = binned_pretrend_p
 
     tempfile binned_coef_`ystem'
     postfile binned_handle str40 outcome byte event_bin str32 bin_label ///
-        double beta cluster_se wild_p using "`binned_coef_`ystem''", replace
+        double beta cluster_se wild_p wild_ci_lb wild_ci_ub ///
+        using "`binned_coef_`ystem''", replace
 
     forvalues b = 0/4 {
         if `b' == 2 {
             post binned_handle ("`yvar'") (`b') ("Reference (k=-1)") ///
-                (0) (0) (.)
+                (0) (0) (.) (.) (.)
         }
         else {
             lincom 1.male#`b'.qoe_event_bin
@@ -571,9 +579,34 @@ foreach yvar of local qoe_event {
             }
             scalar binned_wild_p = r(p)
 
+            * boottest obtains confidence sets by inverting the bootstrap
+            * test and returns their bounds in r(CI). A simple whisker is
+            * valid only when the set is one connected, finite interval.
+            matrix binned_wild_ci = r(CI)
+            if rowsof(binned_wild_ci) != 1 | ///
+                colsof(binned_wild_ci) != 2 {
+                display as error "Wild-bootstrap confidence set is not a single interval for `yvar', event bin `b'."
+                exit 498
+            }
+            scalar binned_wild_lb = binned_wild_ci[1,1]
+            scalar binned_wild_ub = binned_wild_ci[1,2]
+            if missing(binned_wild_lb) | missing(binned_wild_ub) {
+                display as error "Wild-bootstrap confidence set is unbounded or missing for `yvar', event bin `b'."
+                exit 498
+            }
+
+            if `b' == 0 local table_row = 1
+            if `b' == 1 local table_row = 4
+            if `b' == 3 local table_row = 7
+            if `b' == 4 local table_row = 10
+            matrix qoe_binned_table[`table_row', `i'] = binned_beta
+            matrix qoe_binned_table[`table_row' + 1, `i'] = binned_se
+            matrix qoe_binned_table[`table_row' + 2, `i'] = binned_wild_p
+
             local blabel : label qoe_event_bin_lbl `b'
             post binned_handle ("`yvar'") (`b') ("`blabel'") ///
-                (binned_beta) (binned_se) (binned_wild_p)
+                (binned_beta) (binned_se) (binned_wild_p) ///
+                (binned_wild_lb) (binned_wild_ub)
         }
     }
     postclose binned_handle
@@ -583,9 +616,14 @@ foreach yvar of local qoe_event {
         export delimited using ///
             "$OUT/qoe_binned_eventstudy_`ystem'.csv", replace
 
+        gen str12 wild_p_label = ""
+        replace wild_p_label = "p=" + string(wild_p, "%5.3f") ///
+            if !missing(wild_p)
+
         twoway ///
             (connected beta event_bin, msymbol(O) msize(medium) ///
-                lcolor(navy) mcolor(navy)), ///
+                lcolor(navy) mcolor(navy) mlabel(wild_p_label) ///
+                mlabposition(12) mlabsize(small) mlabcolor(black)), ///
             xline(2.5, lpattern(dash) lcolor(red)) ///
             yline(0, lpattern(dash) lcolor(gs10)) ///
             xlabel(0 "Early pre" 1 "Near pre" 2 "Reference" ///
@@ -593,7 +631,7 @@ foreach yvar of local qoe_event {
             xtitle("Birth-cohort exposure bin") ///
             ytitle("Male × bin coefficient (ref: k=-1)") ///
             title("Binned QoE event study: `yvar'") ///
-            note("Points are estimates; cohort wild-bootstrap p-values are saved in CSV.") ///
+            note("Labels report cohort wild-bootstrap p-values; reference normalized to zero.") ///
             legend(off)
 
         graph export "$OUT/qoe_binned_eventstudy_`ystem'.png", replace
@@ -601,6 +639,14 @@ foreach yvar of local qoe_event {
 
     local ++i
 }
+
+matrix rownames qoe_binned_table = ///
+    early_pre early_pre_se early_pre_p ///
+    near_pre near_pre_se near_pre_p ///
+    partial partial_se partial_p ///
+    full full_se full_p joint_pretrend_p
+matrix colnames qoe_binned_table = ///
+    qoe_score income stability conditions
 
 postclose binned_pretrend_results
 
@@ -618,6 +664,29 @@ estimates dir
 
 capture which esttab
 if !_rc {
+
+    * ---- Binned QoE event study ----
+    esttab matrix(qoe_binned_table, fmt(%9.3f)) ///
+        using "$OUT/qoe_binned_eventstudy_table.tex", replace ///
+        coeflabels(early_pre "Early pre: coefficient" ///
+            early_pre_se "\quad Clustered SE" ///
+            early_pre_p "\quad Wild-bootstrap \(p\)-value" ///
+            near_pre "Near pre: coefficient" ///
+            near_pre_se "\quad Clustered SE" ///
+            near_pre_p "\quad Wild-bootstrap \(p\)-value" ///
+            partial "Partial reduction: coefficient" ///
+            partial_se "\quad Clustered SE" ///
+            partial_p "\quad Wild-bootstrap \(p\)-value" ///
+            full "Full reduction: coefficient" ///
+            full_se "\quad Clustered SE" ///
+            full_p "\quad Wild-bootstrap \(p\)-value" ///
+            joint_pretrend_p "Joint pre-trend \(p\)-value") ///
+        collabels("QoE score" "Income" "Stability" "Conditions") ///
+        booktabs nonumber noobs fragment ///
+        addnotes("Reference category is \(k=-1\)." ///
+            "Standard errors are clustered by birth cohort." ///
+            "Wild-bootstrap inference uses the null-imposed wild bootstrap-t and all 2,048 Rademacher assignments." ///
+            "All specifications include education controls and survey-year fixed effects.")
 
     * ---- Main QoE DiD outcomes, primary 50% income cutoff ----
     esttab qoe_did_score50 qoe_did_multidim50 qoe_did_income50 ///
