@@ -39,6 +39,26 @@ else {
 capture mkdir "$OUT"
 display as text "Output folder: $OUT"
 
+capture program drop attach_wild_p
+program define attach_wild_p
+    syntax name(name=model), TERM(string)
+    estimates restore `model'
+    tempname wild_pvals
+    matrix `wild_pvals' = e(b)
+    forvalues j = 1/`=colsof(`wild_pvals')' {
+        matrix `wild_pvals'[1,`j'] = .
+    }
+    local target_col = colnumb(`wild_pvals', "`term'")
+    if missing(`target_col') {
+        display as error "Term `term' not found in stored model `model'."
+        exit 111
+    }
+    matrix `wild_pvals'[1,`target_col'] = e(boot_p)
+    estadd matrix wild_pvals = `wild_pvals', replace
+    estimates drop `model'
+    estimates store `model'
+end
+
 local analysis_run_date = subinstr("`c(current_date)'", " ", "", .)
 local analysis_run_time = subinstr("`c(current_time)'", ":", "", .)
 capture log close analysis11
@@ -294,6 +314,15 @@ restore
 
 capture which esttab
 if !_rc {
+    foreach enlist_age in 19 20 21 {
+        foreach outcome in emp entry {
+            attach_wild_p ea`enlist_age'_did_`outcome', ///
+                term("1.male#1.post_military")
+            attach_wild_p ea`enlist_age'_int_`outcome', ///
+                term("1.male#c.service_months_saved")
+        }
+    }
+
     esttab ea19_did_emp ea19_did_entry ea20_did_emp ea20_did_entry ///
         ea21_did_emp ea21_did_entry ///
         using "$OUT/enlistage_commoncohort_did.tex", replace ///
@@ -303,7 +332,9 @@ if !_rc {
         mtitles("Emp., age 19" "Entry age, age 19" ///
             "Emp., age 20" "Entry age, age 20" ///
             "Emp., age 21" "Entry age, age 21") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -318,7 +349,9 @@ if !_rc {
         mtitles("Emp., age 19" "Entry age, age 19" ///
             "Emp., age 20" "Entry age, age 20" ///
             "Emp., age 21" "Entry age, age 21") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -616,6 +649,15 @@ restore
 
 capture which esttab
 if !_rc {
+    foreach ystem in score50 multidim50 income50 stability conditions {
+        foreach enlist_age in 19 20 21 {
+            attach_wild_p qea`enlist_age'_did_`ystem', ///
+                term("1.male#1.post_military")
+            attach_wild_p qea`enlist_age'_int_`ystem', ///
+                term("1.male#c.service_months_saved")
+        }
+    }
+
     local i = 1
     foreach yvar of local qoe_main {
         local ystem : word `i' of `qoe_main_names'
@@ -626,7 +668,9 @@ if !_rc {
             coeflabels(1.male#1.post_military ///
                 "Post-reform \$\times\$ Male") ///
             mtitles("Age 19" "Age 20" "Age 21") ///
-            se star(* 0.10 ** 0.05 *** 0.01) ///
+            cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+            collabels(none) ///
+            starlevels(* 0.10 ** 0.05 *** 0.01) ///
             stats(N r2 boot_p, ///
                 labels("Observations" "R-squared" ///
                     "Bootstrap \$p\$-value") ///
@@ -640,7 +684,9 @@ if !_rc {
             coeflabels(1.male#c.service_months_saved ///
                 "Months saved \$\times\$ Male") ///
             mtitles("Age 19" "Age 20" "Age 21") ///
-            se star(* 0.10 ** 0.05 *** 0.01) ///
+            cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+            collabels(none) ///
+            starlevels(* 0.10 ** 0.05 *** 0.01) ///
             stats(N r2 boot_p, ///
                 labels("Observations" "R-squared" ///
                     "Bootstrap \$p\$-value") ///
@@ -651,6 +697,155 @@ if !_rc {
     }
 }
 else display as error "esttab not installed; QoE tables not exported."
+
+****************************************************
+* 7. Paper-ready composite QoE table and figure
+*
+* Stars in the table use cohort wild-bootstrap p-values.
+* The figure reports binary-DiD coefficients with 95% confidence
+* intervals based on cohort-clustered standard errors.
+****************************************************
+
+preserve
+    use "$OUT/enlistage_qoe_commoncohort_results.dta", clear
+
+    local composite_outcomes qoe_deprivation_score50 ///
+        qoe_multidim_deprived50 qoe_income_deprivation50 ///
+        qoe_stability_deprivation qoe_conditions_deprivation
+
+    quietly summarize N
+    local composite_N : display %9.0fc r(min)
+    local composite_N = strtrim("`composite_N'")
+
+    file open composite_table using ///
+        "$OUT/enlistage_qoe_composite_table.tex", write replace text
+    file write composite_table "\begin{table}[!htbp]" _n
+    file write composite_table "\centering" _n
+    file write composite_table ///
+        "\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}" _n
+    file write composite_table ///
+        "\caption{QoE Estimates under Alternative Representative Enlistment Ages}" _n
+    file write composite_table ///
+        "\label{tab:enlistage_qoe_composite}" _n
+    file write composite_table "\begin{tabular}{lccc}" _n
+    file write composite_table "\toprule" _n
+    file write composite_table ///
+        "Outcome & Age 19 & Age 20 & Age 21 \\" _n
+    file write composite_table "\midrule" _n
+
+    foreach spec in DiD Intensity {
+        if "`spec'" == "DiD" {
+            file write composite_table ///
+                "\multicolumn{4}{l}{\textit{Panel A: Binary difference-in-differences}} \\" _n
+        }
+        else {
+            file write composite_table "\midrule" _n
+            file write composite_table ///
+                "\multicolumn{4}{l}{\textit{Panel B: Continuous treatment intensity}} \\" _n
+        }
+
+        foreach yvar of local composite_outcomes {
+            if "`yvar'" == "qoe_deprivation_score50" ///
+                local rowlabel "QoE deprivation score"
+            if "`yvar'" == "qoe_multidim_deprived50" ///
+                local rowlabel "Multidimensionally deprived"
+            if "`yvar'" == "qoe_income_deprivation50" ///
+                local rowlabel "Income deprivation"
+            if "`yvar'" == "qoe_stability_deprivation" ///
+                local rowlabel "Employment stability deprivation"
+            if "`yvar'" == "qoe_conditions_deprivation" ///
+                local rowlabel "Working conditions deprivation"
+
+            foreach enlist_age in 19 20 21 {
+                quietly summarize beta if specification == "`spec'" ///
+                    & outcome == "`yvar'" & enlist_age == `enlist_age', ///
+                    meanonly
+                local b`enlist_age' : display %9.4f r(mean)
+                local b`enlist_age' = strtrim("`b`enlist_age''")
+
+                quietly summarize se if specification == "`spec'" ///
+                    & outcome == "`yvar'" & enlist_age == `enlist_age', ///
+                    meanonly
+                local se`enlist_age' : display %9.4f r(mean)
+                local se`enlist_age' = strtrim("`se`enlist_age''")
+
+                quietly summarize wild_p if specification == "`spec'" ///
+                    & outcome == "`yvar'" & enlist_age == `enlist_age', ///
+                    meanonly
+                local star`enlist_age' ""
+                if r(mean) < 0.10 local star`enlist_age' "\sym{*}"
+                if r(mean) < 0.05 local star`enlist_age' "\sym{**}"
+                if r(mean) < 0.01 local star`enlist_age' "\sym{***}"
+            }
+
+            file write composite_table ///
+                "`rowlabel' & `b19'`star19' & `b20'`star20' & `b21'`star21' \\" _n
+            file write composite_table ///
+                " & (`se19') & (`se20') & (`se21') \\" _n
+        }
+    }
+
+    file write composite_table "\midrule" _n
+    file write composite_table ///
+        "Observations & `composite_N' & `composite_N' & `composite_N' \\" _n
+    file write composite_table "\bottomrule" _n
+    file write composite_table "\end{tabular}" _n
+    file write composite_table ///
+        "\begin{minipage}{0.96\linewidth}" _n
+    file write composite_table "\footnotesize " ///
+        "\textit{Notes:} All specifications use wage workers with complete QoE information from the common 1992--2002 birth-cohort sample and include education and survey-year controls. Standard errors clustered by birth cohort are in parentheses. Significance stars use cohort wild-bootstrap p-values: \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), and \sym{***} \(p<0.01\). Panel A reports Post-reform \(\times\) Male; Panel B reports Months saved \(\times\) Male." _n
+    file write composite_table "\end{minipage}" _n
+    file write composite_table "\end{table}" _n
+    file close composite_table
+
+    keep if specification == "DiD"
+    gen outcome_order = .
+    replace outcome_order = 5 if outcome == "qoe_deprivation_score50"
+    replace outcome_order = 4 if outcome == "qoe_multidim_deprived50"
+    replace outcome_order = 3 if outcome == "qoe_income_deprivation50"
+    replace outcome_order = 2 if outcome == "qoe_stability_deprivation"
+    replace outcome_order = 1 if outcome == "qoe_conditions_deprivation"
+    assert !missing(outcome_order)
+
+    gen plot_y = outcome_order
+    replace plot_y = outcome_order + 0.18 if enlist_age == 19
+    replace plot_y = outcome_order - 0.18 if enlist_age == 21
+    gen lb = beta - invnormal(.975)*se
+    gen ub = beta + invnormal(.975)*se
+
+    twoway ///
+        (rcap lb ub plot_y if enlist_age == 19, horizontal ///
+            lcolor(black)) ///
+        (scatter plot_y beta if enlist_age == 19, ///
+            msymbol(O) mcolor(black)) ///
+        (rcap lb ub plot_y if enlist_age == 20, horizontal ///
+            lcolor(gs6)) ///
+        (scatter plot_y beta if enlist_age == 20, ///
+            msymbol(D) mcolor(gs6)) ///
+        (rcap lb ub plot_y if enlist_age == 21, horizontal ///
+            lcolor(gs10)) ///
+        (scatter plot_y beta if enlist_age == 21, ///
+            msymbol(T) mcolor(gs10)), ///
+        xline(0, lpattern(dash) lcolor(gs8)) ///
+        ylabel(1 "Working conditions" 2 "Employment stability" ///
+            3 "Income deprivation" 4 "Multidimensional deprivation" ///
+            5 "QoE deprivation score", angle(horizontal) labsize(small)) ///
+        yscale(range(0.6 5.4)) ///
+        xtitle("Post-reform × Male coefficient") ///
+        ytitle("") ///
+        title("QoE estimates under alternative enlistment ages", ///
+            size(medsmall)) ///
+        note("Common 1992-2002 cohorts; 95% CIs use SEs clustered by birth cohort.", ///
+            size(vsmall)) ///
+        legend(order(2 "Age 19" 4 "Age 20" 6 "Age 21") rows(1) ///
+            position(6) size(small)) ///
+        graphregion(margin(l+22 r+4)) ///
+        xsize(8) ysize(5.5)
+
+    graph export "$OUT/enlistage_qoe_composite_figure.pdf", replace
+    graph export "$OUT/enlistage_qoe_composite_figure.png", ///
+        width(2400) replace
+restore
 
 capture log close analysis11
 

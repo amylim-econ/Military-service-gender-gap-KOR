@@ -1,0 +1,29 @@
+outcome_order,outcome,spec_order,specification,beta,se,wild_p,N
+1,Employed,1,DiD unweighted,-.0322639086369412,.0098743066,.0078125,65216
+1,Employed,2,DiD weighted,-.0440370098740778,.011468817,.0029296875,65216
+1,Employed,3,Intensity unweighted,-.0135266333481863,.0039556953,.029296875,65216
+1,Employed,4,Intensity weighted,-.0187589649975981,.0047531924,.016601563,65216
+2,Current-job entry age,1,DiD unweighted,-.2393446996624616,.046745468,0,31874
+2,Current-job entry age,2,DiD weighted,-.2839536590194167,.059424561,.00390625,31874
+2,Current-job entry age,3,Intensity unweighted,-.1333282823448085,.020208653,.0009765625,31874
+2,Current-job entry age,4,Intensity weighted,-.1482739054235513,.031187641,.005859375,31874
+3,QoE deprivation score,1,DiD unweighted,-.0369160587913664,.0094951428,.0009765625,31311
+3,QoE deprivation score,2,DiD weighted,-.0284264608065219,.0094675897,.0087890625,31311
+3,QoE deprivation score,3,Intensity unweighted,-.0155894892347661,.005149941,.00390625,31311
+3,QoE deprivation score,4,Intensity weighted,-.0106652207101539,.0065840781,.17871094,31311
+4,Multidimensional deprivation,1,DiD unweighted,-.0475631724060961,.017222328,.029296875,31311
+4,Multidimensional deprivation,2,DiD weighted,-.0378558002032983,.017039368,.045898438,31311
+4,Multidimensional deprivation,3,Intensity unweighted,-.0196079289578619,.0081315171,.03125,31311
+4,Multidimensional deprivation,4,Intensity weighted,-.0138912562581366,.010415802,.25292969,31311
+5,Income deprivation,1,DiD unweighted,-.0508454715138611,.013629342,.0009765625,31311
+5,Income deprivation,2,DiD weighted,-.0431639210202028,.015882915,.010742188,31311
+5,Income deprivation,3,Intensity unweighted,-.0232369895590119,.0068679838,.001953125,31311
+5,Income deprivation,4,Intensity weighted,-.0187627151837715,.010036147,.13867188,31311
+6,Stability deprivation,1,DiD unweighted,-.0196602694054673,.010568689,.083007813,31311
+6,Stability deprivation,2,DiD weighted,-.0085171212197116,.010393724,.48046875,31311
+6,Stability deprivation,3,Intensity unweighted,-.0072890926125795,.005971319,.27050781,31311
+6,Stability deprivation,4,Intensity weighted,-.0011271983178408,.0071921423,.88476563,31311
+7,Working-conditions deprivation,1,DiD unweighted,-.0402424354546117,.0087821195,.001953125,31311
+7,Working-conditions deprivation,2,DiD weighted,-.0335983401796607,.00840005,.0068359375,31311
+7,Working-conditions deprivation,3,Intensity unweighted,-.016242385532748,.0045076516,.0048828125,31311
+7,Working-conditions deprivation,4,Intensity weighted,-.0121057486288553,.0047212793,.022460938,31311

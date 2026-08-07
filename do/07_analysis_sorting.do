@@ -33,6 +33,26 @@ else {
 capture mkdir "$OUT"
 display as text "Output folder: $OUT"
 
+capture program drop attach_wild_p
+program define attach_wild_p
+    syntax name(name=model), TERM(string)
+    estimates restore `model'
+    tempname wild_pvals
+    matrix `wild_pvals' = e(b)
+    forvalues j = 1/`=colsof(`wild_pvals')' {
+        matrix `wild_pvals'[1,`j'] = .
+    }
+    local target_col = colnumb(`wild_pvals', "`term'")
+    if missing(`target_col') {
+        display as error "Term `term' not found in stored model `model'."
+        exit 111
+    }
+    matrix `wild_pvals'[1,`target_col'] = e(boot_p)
+    estadd matrix wild_pvals = `wild_pvals', replace
+    estimates drop `model'
+    estimates store `model'
+end
+
 capture confirm file "$CLEAN/mdis_master_2001_2025.dta"
 if _rc {
     display as error "Master file not found: $CLEAN/mdis_master_2001_2025.dta"
@@ -288,6 +308,15 @@ restore
 
 capture which esttab
 if !_rc {
+
+    foreach stem in occ_raw occ_adj ind_raw ind_adj {
+        foreach suffix in y e {
+            attach_wild_p sort_`stem'_`suffix', ///
+                term("1.male#1.post_military")
+        }
+        attach_wild_p sorti_`stem', ///
+            term("1.male#c.service_months_saved")
+    }
     esttab sort_occ_raw_y sort_occ_raw_e sort_occ_adj_y sort_occ_adj_e ///
         sort_ind_raw_y sort_ind_raw_e sort_ind_adj_y sort_ind_adj_e ///
         using "$OUT/sorting_did_wage_indices.tex", replace ///
@@ -297,7 +326,9 @@ if !_rc {
             "Occ. adjusted" "Occ. adjusted + educ." ///
             "Ind. raw" "Ind. raw + educ." ///
             "Ind. adjusted" "Ind. adjusted + educ.") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -310,7 +341,9 @@ if !_rc {
             "Months saved \$\times\$ Male") ///
         mtitles("Occupation raw" "Occupation adjusted" ///
             "Industry raw" "Industry adjusted") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///

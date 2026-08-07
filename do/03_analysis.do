@@ -186,6 +186,65 @@ estimates clear
 
 *---- employed ----
 reg employed i.male##i.post_military `controls_basic', vce(cluster cohort)
+
+* Descriptive denominator used to express the employment DiD estimate as a
+* percentage of untreated men's mean employment. Restrict to the exact
+* employment-regression sample so missing controls cannot alter the denominator.
+scalar employed_did_beta = _b[1.male#1.post_military]
+quietly summarize employed if e(sample) & male == 1 & post_military == 0
+scalar untreated_male_employment_mean = r(mean)
+scalar untreated_male_employment_N = r(N)
+quietly levelsof cohort if e(sample) & male == 1 & post_military == 0, ///
+    local(untreated_male_cohorts)
+local untreated_male_cluster_count : word count `untreated_male_cohorts'
+scalar untreated_male_cluster_N = ///
+    `untreated_male_cluster_count'
+scalar employed_relative_magnitude_pct = ///
+    100 * abs(employed_did_beta) / untreated_male_employment_mean
+
+tempfile untreated_male_mean_data
+tempname untreated_male_mean_handle
+postfile `untreated_male_mean_handle' ///
+    double employment_mean employment_percent did_coefficient ///
+    relative_magnitude_percent untreated_male_N untreated_male_cohorts ///
+    using `untreated_male_mean_data', replace
+post `untreated_male_mean_handle' ///
+    (untreated_male_employment_mean) ///
+    (100 * untreated_male_employment_mean) ///
+    (employed_did_beta) (employed_relative_magnitude_pct) ///
+    (untreated_male_employment_N) (untreated_male_cluster_N)
+postclose `untreated_male_mean_handle'
+
+preserve
+    use `untreated_male_mean_data', clear
+    export delimited using ///
+        "$OUT/employment_untreated_male_mean.csv", replace
+    save "$OUT/employment_untreated_male_mean.dta", replace
+restore
+
+matrix untreated_male_mean_table = ///
+    (untreated_male_employment_mean, ///
+     100 * untreated_male_employment_mean, ///
+     employed_did_beta, employed_relative_magnitude_pct, ///
+     untreated_male_employment_N, untreated_male_cluster_N)
+matrix rownames untreated_male_mean_table = employment
+matrix colnames untreated_male_mean_table = ///
+    mean proportion_percent did_coefficient relative_percent N cohorts
+
+capture which esttab
+if !_rc {
+    esttab matrix(untreated_male_mean_table, ///
+        fmt(%9.4f %9.2f %9.4f %9.2f %9.0f %9.0f)) ///
+        using "$OUT/employment_untreated_male_mean.tex", replace ///
+        coeflabels(employment "Employment") ///
+        collabels("Untreated-male mean" "Mean (percent)" ///
+            "DiD coefficient" "Relative magnitude (percent)" ///
+            "Observations" "Cohorts") ///
+        mlabels(none) booktabs nonumber noobs fragment ///
+        addnotes("Untreated men are men born before 1997 in the exact estimation sample of the main employment DiD regression." ///
+            "Relative magnitude is 100 times the absolute DiD coefficient divided by the untreated-male employment mean.")
+}
+
 estimates store did_employed
 *Wild cluster bootstrap p-value for the interaction term
 boottest 1.male#1.post_military, cluster(cohort) reps(9999) seed(12345) nograph
@@ -214,6 +273,29 @@ boottest 1.male#c.service_months_saved, cluster(cohort) reps(9999) seed(12345) n
 scalar boot_p_int_entry = r(p)
 estadd scalar boot_p = boot_p_int_entry : int_entry
 
+* esttab normally derives stars from the conventional regression p-values.
+* Attach a coefficient-aligned p-value matrix to each stored model so that
+* stars on the treatment interaction instead use the wild-bootstrap p-value.
+foreach model in did_employed did_entry int_employed int_entry {
+    estimates restore `model'
+    matrix wild_pvals = e(b)
+    forvalues j = 1/`=colsof(wild_pvals)' {
+        matrix wild_pvals[1,`j'] = .
+    }
+
+    if inlist("`model'", "did_employed", "did_entry") {
+        local target_term "1.male#1.post_military"
+    }
+    else {
+        local target_term "1.male#c.service_months_saved"
+    }
+    matrix wild_pvals[1,colnumb(wild_pvals,"`target_term'")] = ///
+        boot_p_`model'
+    estadd matrix wild_pvals = wild_pvals, replace
+    estimates drop `model'
+    estimates store `model'
+}
+
 ****************************************************
 * Bootstrap p-values print & save
 ****************************************************
@@ -241,7 +323,9 @@ restore
 ****************************************************
 * 5. Event-study regressions
 * Reference cohort: k=-1, birth cohort 1996, rel_shift=4
-* Inference uses cohort-clustered standard errors, matching DiD.
+* Plotted pointwise 95% confidence intervals use cohort-clustered standard
+* errors and a t critical value with G-1 cluster degrees of freedom.
+* Formal inference continues to use wild-cluster-bootstrap tests.
 * Wild-bootstrap joint pre-trend p-values test k=-5 to k=-2.
 ****************************************************
 
@@ -262,6 +346,7 @@ foreach yvar in employed entry_age {
 
     reg `yvar' i.male##ib4.rel_shift `ctrls' `sample_if', vce(cluster cohort)
     estimates store es_`yvar'
+    scalar es_tcrit = invttail(e(df_r), .025)
 
     capture boottest 1.male#0.rel_shift 1.male#1.rel_shift ///
         1.male#2.rel_shift 1.male#3.rel_shift, ///
@@ -272,7 +357,8 @@ foreach yvar in employed entry_age {
 
     * Export event-study coefficients for plotting elsewhere if desired
     tempfile coef_`yvar'
-    postfile handle str30 outcome int rel_cohort double beta se lb ub using "`coef_`yvar''", replace
+    postfile handle str30 outcome int rel_cohort double beta se lb ub ///
+        using "`coef_`yvar''", replace
 
     forvalues k = -5/5 {
         local s = `k' + 5
@@ -283,7 +369,8 @@ foreach yvar in employed entry_age {
             capture lincom 1.male#`s'.rel_shift
             if !_rc {
                 post handle ("`yvar'") (`k') (r(estimate)) (r(se)) ///
-                    (r(estimate) - 1.96*r(se)) (r(estimate) + 1.96*r(se))
+                    (r(estimate) - es_tcrit*r(se)) ///
+                    (r(estimate) + es_tcrit*r(se))
             }
         }
     }
@@ -291,7 +378,6 @@ foreach yvar in employed entry_age {
 
     preserve
         quietly use "`coef_`yvar''", clear
-        capture erase "$OUT/eventstudy_`yvar'.csv"
         export delimited using "$OUT/eventstudy_`yvar'.csv", replace
     restore
 }
@@ -341,7 +427,8 @@ esttab did_entry did_employed ///
     keep(1.male#1.post_military) ///
     coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
     mtitles("Entry age" "Employed") ///
-    se nostar ///
+    cells(b(star pvalue(wild_pvals) fmt(3)) se(par fmt(3))) ///
+    starlevels(* 0.10 ** 0.05 *** 0.01) ///
     stats(N boot_p, labels("Observations" "Wild-bootstrap \$p\$-value") ///
         fmt(%9.0fc %9.3f)) ///
     addnotes("Standard errors clustered by birth cohort (11 clusters)." ///
@@ -354,7 +441,8 @@ esttab int_entry int_employed ///
     keep(1.male#c.service_months_saved) ///
     coeflabels(1.male#c.service_months_saved "Months saved \$\times\$ Male") ///
     mtitles("Entry age" "Employed") ///
-    se nostar ///
+    cells(b(star pvalue(wild_pvals) fmt(3)) se(par fmt(3))) ///
+    starlevels(* 0.10 ** 0.05 *** 0.01) ///
     stats(N boot_p, labels("Observations" "Wild-bootstrap \$p\$-value") ///
         fmt(%9.0fc %9.3f)) ///
     addnotes("Standard errors clustered by birth cohort (11 clusters)." ///

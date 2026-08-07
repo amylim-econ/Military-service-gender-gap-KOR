@@ -20,6 +20,26 @@ if _rc global OUT "output"
 
 capture mkdir "$OUT"
 
+capture program drop attach_wild_p
+program define attach_wild_p
+    syntax name(name=model), TERM(string)
+    estimates restore `model'
+    tempname wild_pvals
+    matrix `wild_pvals' = e(b)
+    forvalues j = 1/`=colsof(`wild_pvals')' {
+        matrix `wild_pvals'[1,`j'] = .
+    }
+    local target_col = colnumb(`wild_pvals', "`term'")
+    if missing(`target_col') {
+        display as error "Term `term' not found in stored model `model'."
+        exit 111
+    }
+    matrix `wild_pvals'[1,`target_col'] = e(boot_p)
+    estadd matrix wild_pvals = `wild_pvals', replace
+    estimates drop `model'
+    estimates store `model'
+end
+
 local run_date = subinstr("`c(current_date)'", " ", "", .)
 local run_time = subinstr("`c(current_time)'", ":", "", .)
 capture log close analysis13
@@ -592,6 +612,11 @@ foreach yvar in employed entry_age_months {
 
 capture which esttab
 if !_rc {
+    attach_wild_p may_did_w, term("1.male#1.post_military")
+    attach_wild_p may_int_w, term("1.male#c.service_months_saved")
+    attach_wild_p may_did_uw, term("1.male#1.post_military")
+    attach_wild_p may_int_uw, term("1.male#c.service_months_saved")
+
     esttab may_did_w may_int_w may_did_uw may_int_uw ///
         using "$OUT/may_youth_entry_age_table.tex", replace ///
         keep(1.male#1.post_military ///
@@ -602,7 +627,9 @@ if !_rc {
             "Months saved \$\times\$ Male") ///
         mtitles("DiD weighted" "Intensity weighted" ///
             "DiD unweighted" "Intensity unweighted") ///
-        se nostar ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N boot_p, labels("Observations" ///
             "Wild-bootstrap \$p\$-value") fmt(%9.0fc %9.3f)) ///
         addnotes("Outcome is first-job entry age in months." ///

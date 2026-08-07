@@ -36,6 +36,26 @@ else {
 capture mkdir "$OUT"
 display as text "Output folder: $OUT"
 
+capture program drop attach_wild_p
+program define attach_wild_p
+    syntax name(name=model), TERM(string)
+    estimates restore `model'
+    tempname wild_pvals
+    matrix `wild_pvals' = e(b)
+    forvalues j = 1/`=colsof(`wild_pvals')' {
+        matrix `wild_pvals'[1,`j'] = .
+    }
+    local target_col = colnumb(`wild_pvals', "`term'")
+    if missing(`target_col') {
+        display as error "Term `term' not found in stored model `model'."
+        exit 111
+    }
+    matrix `wild_pvals'[1,`target_col'] = e(boot_p)
+    estadd matrix wild_pvals = `wild_pvals', replace
+    estimates drop `model'
+    estimates store `model'
+end
+
 capture confirm file "$CLEAN/mdis_master_qoe_2001_2025.dta"
 if _rc {
     display as error "QoE master file not found: $CLEAN/mdis_master_qoe_2001_2025.dta"
@@ -392,6 +412,23 @@ restore
 
 capture which esttab
 if !_rc {
+
+    foreach stem in score_raw score_adj income_raw income_adj ///
+        stability_raw stability_adj conditions_raw conditions_adj {
+        attach_wild_p qsort_`stem', term("1.male#1.post_military")
+        attach_wild_p qsorti_`stem', ///
+            term("1.male#c.service_months_saved")
+        attach_wild_p qsortx_`stem', term("1.male#1.post_military")
+        attach_wild_p qsortix_`stem', ///
+            term("1.male#c.service_months_saved")
+    }
+
+    foreach stem in score income stability conditions {
+        forvalues s = 1/4 {
+            attach_wild_p qwithin_`stem'_s`s', ///
+                term("1.male#1.post_military")
+        }
+    }
     esttab qsort_score_raw qsort_score_adj ///
         qsort_income_raw qsort_income_adj ///
         qsort_stability_raw qsort_stability_adj ///
@@ -404,7 +441,9 @@ if !_rc {
             "Income raw" "Income adjusted" ///
             "Stability raw" "Stability adjusted" ///
             "Conditions raw" "Conditions adjusted") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -422,7 +461,9 @@ if !_rc {
             "Income raw" "Income adjusted" ///
             "Stability raw" "Stability adjusted" ///
             "Conditions raw" "Conditions adjusted") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -441,7 +482,9 @@ if !_rc {
             "Income raw" "Income adjusted" ///
             "Stability raw" "Stability adjusted" ///
             "Conditions raw" "Conditions adjusted") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -459,7 +502,9 @@ if !_rc {
             "Income raw" "Income adjusted" ///
             "Stability raw" "Stability adjusted" ///
             "Conditions raw" "Conditions adjusted") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -475,7 +520,9 @@ if !_rc {
                 "Post-reform \$\times\$ Male") ///
             mtitles("Education + year" "+ Tenure" ///
                 "+ Occupation FE" "+ Industry FE") ///
-            se star(* 0.10 ** 0.05 *** 0.01) ///
+            cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+            collabels(none) ///
+            starlevels(* 0.10 ** 0.05 *** 0.01) ///
             stats(N r2 boot_p, ///
                 labels("Observations" "R-squared" ///
                     "Bootstrap \$p\$-value") ///

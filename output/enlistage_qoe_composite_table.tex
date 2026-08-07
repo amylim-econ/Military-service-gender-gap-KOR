@@ -1,0 +1,40 @@
+\begin{table}[!htbp]
+\centering
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\caption{QoE Estimates under Alternative Representative Enlistment Ages}
+\label{tab:enlistage_qoe_composite}
+\begin{tabular}{lccc}
+\toprule
+Outcome & Age 19 & Age 20 & Age 21 \\
+\midrule
+\multicolumn{4}{l}{\textit{Panel A: Binary difference-in-differences}} \\
+QoE deprivation score & -0.0346\sym{***} & -0.0369\sym{***} & -0.0308\sym{***} \\
+ & (0.0131) & (0.0095) & (0.0095) \\
+Multidimensionally deprived & -0.0393 & -0.0476\sym{**} & -0.0396\sym{**} \\
+ & (0.0228) & (0.0172) & (0.0165) \\
+Income deprivation & -0.0521\sym{***} & -0.0508\sym{***} & -0.0451\sym{***} \\
+ & (0.0177) & (0.0136) & (0.0127) \\
+Employment stability deprivation & -0.0159 & -0.0197\sym{*} & -0.0170 \\
+ & (0.0136) & (0.0106) & (0.0099) \\
+Working conditions deprivation & -0.0360\sym{**} & -0.0402\sym{***} & -0.0303\sym{**} \\
+ & (0.0115) & (0.0088) & (0.0112) \\
+\midrule
+\multicolumn{4}{l}{\textit{Panel B: Continuous treatment intensity}} \\
+QoE deprivation score & -0.0158\sym{**} & -0.0156\sym{***} & -0.0157\sym{***} \\
+ & (0.0052) & (0.0051) & (0.0039) \\
+Multidimensionally deprived & -0.0201\sym{*} & -0.0196\sym{**} & -0.0198\sym{**} \\
+ & (0.0084) & (0.0081) & (0.0069) \\
+Income deprivation & -0.0250\sym{***} & -0.0232\sym{***} & -0.0229\sym{***} \\
+ & (0.0065) & (0.0069) & (0.0051) \\
+Employment stability deprivation & -0.0070 & -0.0073 & -0.0082 \\
+ & (0.0069) & (0.0060) & (0.0048) \\
+Working conditions deprivation & -0.0155\sym{**} & -0.0162\sym{***} & -0.0160\sym{***} \\
+ & (0.0051) & (0.0045) & (0.0037) \\
+\midrule
+Observations & 31,311 & 31,311 & 31,311 \\
+\bottomrule
+\end{tabular}
+\begin{minipage}{0.96\linewidth}
+\footnotesize \textit{Notes:} All specifications use wage workers with complete QoE information from the common 1992--2002 birth-cohort sample and include education and survey-year controls. Standard errors clustered by birth cohort are in parentheses. Significance stars use cohort wild-bootstrap p-values: \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), and \sym{***} \(p<0.01\). Panel A reports Post-reform \(\times\) Male; Panel B reports Months saved \(\times\) Male.
+\end{minipage}
+\end{table}

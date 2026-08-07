@@ -34,6 +34,28 @@ else {
 capture mkdir "$OUT"
 display as text "Output folder: $OUT"
 
+* Attach a coefficient-aligned p-value matrix to a stored estimate so that
+* esttab significance stars use e(boot_p), not conventional regression p-values.
+capture program drop attach_wild_p
+program define attach_wild_p
+    syntax name(name=model), TERM(string)
+    estimates restore `model'
+    tempname wild_pvals
+    matrix `wild_pvals' = e(b)
+    forvalues j = 1/`=colsof(`wild_pvals')' {
+        matrix `wild_pvals'[1,`j'] = .
+    }
+    local target_col = colnumb(`wild_pvals', "`term'")
+    if missing(`target_col') {
+        display as error "Term `term' not found in stored model `model'."
+        exit 111
+    }
+    matrix `wild_pvals'[1,`target_col'] = e(boot_p)
+    estadd matrix wild_pvals = `wild_pvals', replace
+    estimates drop `model'
+    estimates store `model'
+end
+
 capture confirm file "$CLEAN/mdis_master_qoe_2001_2025.dta"
 if _rc {
     display as error "QoE master file not found: $CLEAN/mdis_master_qoe_2001_2025.dta"
@@ -42,6 +64,11 @@ if _rc {
 }
 
 use "$CLEAN/mdis_master_qoe_2001_2025.dta", clear
+
+* Remove stale Stata internal temporary variables carried in the saved
+* analysis dataset. boottest uses the same reserved names; if they remain,
+* they can corrupt the first bootstrap call after loading the QoE master.
+capture drop __000000 __000001
 
 ****************************************************
 * 1. Required variables
@@ -423,6 +450,7 @@ foreach yvar of local qoe_event {
     reg `yvar' i.male##ib4.rel_shift `controls_qoe' ///
         if wage_worker == 1 & qoe_complete == 1, vce(cluster cohort)
     estimates store qoe_es_`ystem'
+    scalar es_tcrit = invttail(e(df_r), .025)
 
     capture boottest 1.male#0.rel_shift 1.male#1.rel_shift ///
         1.male#2.rel_shift 1.male#3.rel_shift, ///
@@ -445,8 +473,8 @@ foreach yvar of local qoe_event {
             if !_rc {
                 scalar es_beta = r(estimate)
                 scalar es_se = r(se)
-                scalar es_lb = r(estimate) - 1.96*r(se)
-                scalar es_ub = r(estimate) + 1.96*r(se)
+                scalar es_lb = r(estimate) - es_tcrit*r(se)
+                scalar es_ub = r(estimate) + es_tcrit*r(se)
 
                 capture boottest 1.male#`s'.rel_shift, ///
                     cluster(cohort) reps(9999) seed(12345) nograph
@@ -477,7 +505,7 @@ restore
 
 ****************************************************
 * 11. Event-study plots
-* Confidence intervals are clustered-regression CIs.
+* Confidence intervals use clustered SEs and t(G-1) critical values.
 * Wild-bootstrap coefficient p-values are saved in the CSVs.
 ****************************************************
 
@@ -501,7 +529,6 @@ foreach yvar of local qoe_event {
             xtitle("Relative birth cohort (k)") ///
             ytitle("Male × cohort coefficient (ref: k=-1)") ///
             title("QoE event study: `yvar'") ///
-            note("Regression uses vce(cluster cohort). Wild-bootstrap p-values saved in CSV.") ///
             legend(off)
 
         graph export "$OUT/qoe_eventstudy_`ystem'.png", replace
@@ -631,7 +658,6 @@ foreach yvar of local qoe_event {
             xtitle("Birth-cohort exposure bin") ///
             ytitle("Male × bin coefficient (ref: k=-1)") ///
             title("Binned QoE event study: `yvar'") ///
-            note("Labels report cohort wild-bootstrap p-values; reference normalized to zero.") ///
             legend(off)
 
         graph export "$OUT/qoe_binned_eventstudy_`ystem'.png", replace
@@ -665,6 +691,30 @@ estimates dir
 capture which esttab
 if !_rc {
 
+    local wild_did_models qoe_did_score50 qoe_did_multidim50 ///
+        qoe_did_income50 qoe_did_stability qoe_did_conditions ///
+        qoe_did_score667 qoe_did_multidim667 qoe_did_income667 ///
+        qoe_decomp_lowwage50 qoe_decomp_nonperm ///
+        qoe_decomp_continuity qoe_decomp_hours qoe_decomp_socialins ///
+        qoe_contrib_income50 qoe_contrib_nonperm ///
+        qoe_contrib_continuity qoe_contrib_hours qoe_contrib_socialins
+    foreach model of local wild_did_models {
+        attach_wild_p `model', term("1.male#1.post_military")
+    }
+
+    local wild_int_models qoe_int_score50 qoe_int_multidim50 ///
+        qoe_int_income50 qoe_int_stability qoe_int_conditions
+    foreach model of local wild_int_models {
+        attach_wild_p `model', term("1.male#c.service_months_saved")
+    }
+
+    foreach shorty in sc50 md50 inc50 stab cond {
+        foreach shortg in all male fem mix {
+            attach_wild_p qm_`shorty'_`shortg', ///
+                term("1.male#1.post_military")
+        }
+    }
+
     * ---- Binned QoE event study ----
     esttab matrix(qoe_binned_table, fmt(%9.3f)) ///
         using "$OUT/qoe_binned_eventstudy_table.tex", replace ///
@@ -696,7 +746,9 @@ if !_rc {
         coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
         mtitles("QoE score" "Multidim. deprived" "Income" ///
             "Stability" "Conditions") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -708,7 +760,9 @@ if !_rc {
         keep(1.male#1.post_military) ///
         coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
         mtitles("QoE score" "Multidim. deprived" "Income") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -722,7 +776,9 @@ if !_rc {
         coeflabels(1.male#c.service_months_saved "Months saved \$\times\$ Male") ///
         mtitles("QoE score" "Multidim. deprived" "Income" ///
             "Stability" "Conditions") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -736,7 +792,9 @@ if !_rc {
         coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
         mtitles("Low wage" "Non-permanent" "No continuity" ///
             "Hours >48" "Lacks insurance") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -750,7 +808,9 @@ if !_rc {
         coeflabels(1.male#1.post_military "Post-reform \$\times\$ Male") ///
         mtitles("Income contrib." "Nonperm. contrib." ///
             "Continuity contrib." "Hours contrib." "Insurance contrib.") ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///
@@ -774,7 +834,9 @@ if !_rc {
             "Stability" "Conditions", ///
             pattern(1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0) ///
             prefix("\multicolumn{@span}{c}{") suffix("}") span) ///
-        se star(* 0.10 ** 0.05 *** 0.01) ///
+        cells(b(star pvalue(wild_pvals) fmt(a3)) se(par fmt(a3))) ///
+        collabels(none) ///
+        starlevels(* 0.10 ** 0.05 *** 0.01) ///
         stats(N r2 boot_p, ///
             labels("Observations" "R-squared" "Bootstrap \$p\$-value") ///
             fmt(%9.0fc %9.3f %9.3f)) ///

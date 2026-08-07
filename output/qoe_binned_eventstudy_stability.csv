@@ -1,6 +1,6 @@
 outcome,event_bin,bin_label,beta,cluster_se,wild_p,wild_ci_lb,wild_ci_ub
-qoe_stability_deprivation,0,"Early pre (k=-5,-4)",-.0053134227939798,.0080811251,.68359375,-13.505247,2.0842061
-qoe_stability_deprivation,1,"Near pre (k=-3,-2)",.00199876354644,.0088031702,.72558594,-7.1529021,3.1078918
+qoe_stability_deprivation,0,"Early pre (k=-5,-4)",-.0053134227936344,.0080811251,.68359375,-13.505247,2.0842061
+qoe_stability_deprivation,1,"Near pre (k=-3,-2)",.0019987635467714,.0088031702,.72558594,-7.1529021,3.1078918
 qoe_stability_deprivation,2,Reference (k=-1),0,0,,,
-qoe_stability_deprivation,3,"Partial reduction (k=0,1,2)",-.0198590864665701,.010432223,.2578125,-1.3013502,8.7992382
-qoe_stability_deprivation,4,"Full reduction (k=3,4,5)",-.0199912433518527,.017664025,.34667969,-.31222603,.028714554
+qoe_stability_deprivation,3,"Partial reduction (k=0,1,2)",-.0198590864661779,.010432223,.2578125,-1.3013502,8.7992382
+qoe_stability_deprivation,4,"Full reduction (k=3,4,5)",-.0199912433515059,.017664025,.34667969,-.31222603,.028714554

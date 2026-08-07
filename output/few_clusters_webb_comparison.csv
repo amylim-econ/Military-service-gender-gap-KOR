@@ -1,0 +1,15 @@
+outcome_group,outcome,outcome_label,specification,beta,cluster_se,rademacher_p,webb_p,N,N_clusters,outcome_order,spec_order
+Entry,entry_age,Current-job entry age,Binary DiD,-.2393446996624616,.046745468,0,.00140014,31874,11,1,1
+Entry,entry_age,Current-job entry age,Intensity,-.1333282823448085,.020208653,.0009765625,.00130013,31874,11,1,2
+Entry,employed,Employed,Binary DiD,-.0322639086369412,.0098743066,.0078125,.0052005202,65216,11,2,1
+Entry,employed,Employed,Intensity,-.0135266333481863,.0039556953,.029296875,.01980198,65216,11,2,2
+QoE,qoe_deprivation_score50,QoE deprivation score,Binary DiD,-.0369160587913664,.0094951428,.0009765625,.0020002001,31311,11,3,1
+QoE,qoe_deprivation_score50,QoE deprivation score,Intensity,-.0155894892348563,.005149941,.00390625,.0036003601,31311,11,3,2
+QoE,qoe_multidim_deprived50,Multidimensional deprivation,Binary DiD,-.0475631724061054,.017222328,.029296875,.02780278,31311,11,4,1
+QoE,qoe_multidim_deprived50,Multidimensional deprivation,Intensity,-.0196079289579497,.0081315171,.03125,.02350235,31311,11,4,2
+QoE,qoe_income_deprivation50,Income deprivation,Binary DiD,-.0508454715139989,.013629342,.0009765625,.00190019,31311,11,5,1
+QoE,qoe_income_deprivation50,Income deprivation,Intensity,-.0232369895591425,.0068679838,.001953125,.0024002399,31311,11,5,2
+QoE,qoe_stability_deprivation,Stability deprivation,Binary DiD,-.0196602694053613,.010568689,.083007813,.089408942,31311,11,6,1
+QoE,qoe_stability_deprivation,Stability deprivation,Intensity,-.0072890926126739,.005971319,.27050781,.26572657,31311,11,6,2
+QoE,qoe_conditions_deprivation,Conditions deprivation,Binary DiD,-.0402424354546395,.0087821195,.001953125,.00220022,31311,11,7,1
+QoE,qoe_conditions_deprivation,Conditions deprivation,Intensity,-.0162423855328099,.0045076516,.0048828125,.0051005101,31311,11,7,2
